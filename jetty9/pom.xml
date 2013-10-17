@@ -289,10 +289,6 @@
 						<phase>package</phase>
 						<configuration>
 							<finalName>${project.artifactId}</finalName>
-							<includes>
-								<include>org/openspaces/pu/container/jee/jetty/holder/**</include>
-								<include>org/openspaces/pu/container/jee/jetty/support/**</include>
-							</includes>
 							<archive>
 								<manifestEntries>
 									<Implementation-Title>${project.artifactId}</Implementation-Title>
