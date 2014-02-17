@@ -19,9 +19,7 @@ package org.openspaces.pu.container.jee.jetty.holder;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.util.MultiException;
 
 /**
  * A shared jetty holder that keeps upon first construction will store a static jetty instance and will
@@ -29,7 +27,7 @@ import org.eclipse.jetty.util.MultiException;
  *
  * @author kimchy
  */
-public class SharedJettyHolder implements JettyHolder {
+public class SharedJettyHolder extends JettyHolder {
 
     private static final Log logger = LogFactory.getLog(SharedJettyHolder.class);
 
@@ -45,37 +43,15 @@ public class SharedJettyHolder implements JettyHolder {
                 server = localServer;
                 server.setStopAtShutdown(false);
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Usign new jetty server [" + server + "]");
+                    logger.debug("Using new jetty server [" + server + "]");
                 }
             } else {
                 if (logger.isDebugEnabled()) {
-                    logger.debug("Usign existing jetty server [" + server + "]");
+                    logger.debug("Using existing jetty server [" + server + "]");
                 }
             }
         }
     }
-
-    public void openConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
-        for (Connector c : connectors) {
-            c.open();
-        }
-    }
-
-    public void closeConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
-        MultiException ex = new MultiException();
-        for (Connector c : connectors) {
-            try {
-                c.close();
-            }
-            catch (Exception e) {
-                ex.add(e);
-            }
-        }
-        ex.ifExceptionThrowMulti();
-    }
-
 
     public void start() throws Exception {
         synchronized (serverLock) {
@@ -83,7 +59,7 @@ public class SharedJettyHolder implements JettyHolder {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Starting jetty server [" + server + "]");
                 }
-                server.start();
+                super.start();
             }
         }
     }
@@ -94,8 +70,7 @@ public class SharedJettyHolder implements JettyHolder {
                 if (logger.isDebugEnabled()) {
                     logger.debug("Stopping jetty server [" + server + "]");
                 }
-                server.stop();
-                server.destroy();
+                super.stop();
             }
         }
     }

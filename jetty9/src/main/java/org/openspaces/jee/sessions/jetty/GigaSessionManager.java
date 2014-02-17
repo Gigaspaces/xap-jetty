@@ -28,21 +28,18 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSessionEvent;
 import javax.servlet.http.HttpSessionListener;
 
+import com.gigaspaces.client.ClearModifiers;
 import net.jini.core.lease.Lease;
 
 import org.eclipse.jetty.server.session.AbstractSession;
 import org.eclipse.jetty.server.session.AbstractSessionManager;
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.log.Log;
-import org.openspaces.core.cluster.ClusterInfo;
-import org.openspaces.core.properties.BeanLevelProperties;
+import org.openspaces.core.GigaSpace;
+import org.openspaces.core.GigaSpaceConfigurer;
 import org.openspaces.core.space.UrlSpaceConfigurer;
 
-import com.gigaspaces.internal.client.QueryResultTypeInternal;
-import com.gigaspaces.internal.client.spaceproxy.ISpaceProxy;
-import com.j_spaces.core.IJSpace;
 import com.j_spaces.core.client.SQLQuery;
-
 
 /**
  * GigaspacesSessionManager
@@ -58,17 +55,9 @@ import com.j_spaces.core.client.SQLQuery;
  */
 public class GigaSessionManager extends AbstractSessionManager {
 
-    private static final String SESSION_DATA_CLASSNAME = SessionData.class.getName();
-
-    private ISpaceProxy space;
+    private GigaSpace gigaSpace;
 
     private UrlSpaceConfigurer urlSpaceConfigurer;
-
-    private String spaceUrl;
-
-    private ClusterInfo clusterInfo;
-
-    private BeanLevelProperties beanLevelProperties;
 
     private long lease = Lease.FOREVER;
 
@@ -98,30 +87,23 @@ public class GigaSessionManager extends AbstractSessionManager {
      */
     @Override
     public void doStart() throws Exception {
-        if (space == null) {
-            if (spaceUrl == null)
-                throw new IllegalStateException("No url for space");
-
-            if (spaceUrl.startsWith("bean://")) {
-                throw new IllegalArgumentException("bean:// is only supported when deploying into the service grid");
-            }
-            urlSpaceConfigurer = new UrlSpaceConfigurer(spaceUrl).clusterInfo(clusterInfo);
-            space = (ISpaceProxy) urlSpaceConfigurer.space();
+        if (gigaSpace == null) {
+            gigaSpace = new GigaSpaceConfigurer(urlSpaceConfigurer).create();
         }
 
         if (_sessionIdManager == null) {
             _sessionIdManager = new GigaSessionIdManager(getSessionHandler().getServer());
-            ((GigaSessionIdManager) _sessionIdManager).setSpace(space);
+            ((GigaSessionIdManager) _sessionIdManager).setSpace(gigaSpace);
         }
         if (_sessionIdManager instanceof GigaSessionIdManager) {
             if (((GigaSessionIdManager) _sessionIdManager).getSpace() == null) {
-                ((GigaSessionIdManager) _sessionIdManager).setSpace(space);
+                ((GigaSessionIdManager) _sessionIdManager).setSpace(gigaSpace);
             }
         }
 
         synchronized (executorMonitor) {
             if (totalNumberOfScavangers == 0) {
-                if (Log.isDebugEnabled()) Log.debug("Starting scavenger with period [" + _scavengePeriodMs + "ms]");
+                if (Log.getLog().isDebugEnabled()) Log.getLog().debug("Starting scavenger with period [" + _scavengePeriodMs + "ms]");
                 executorService = Executors.newScheduledThreadPool(1);
             }
             totalNumberOfScavangers++;
@@ -135,7 +117,6 @@ public class GigaSessionManager extends AbstractSessionManager {
         super.doStart();
     }
 
-
     /**
      * Stop the session manager.
      */
@@ -145,12 +126,12 @@ public class GigaSessionManager extends AbstractSessionManager {
             if (scavengerFuture != null) {
                 scavengerFuture.cancel(true);
                 if (--totalNumberOfScavangers == 0) {
-                    if (Log.isDebugEnabled()) Log.debug("Stopping scavenger");
+                    if (Log.getLog().isDebugEnabled()) Log.getLog().debug("Stopping scavenger");
                     executorService.shutdown();
                 }
             }
         }
-        space = null;
+        gigaSpace = null;
         if (urlSpaceConfigurer != null) {
             urlSpaceConfigurer.destroy();
         }
@@ -201,36 +182,16 @@ public class GigaSessionManager extends AbstractSessionManager {
         this.countSessionPeriod = TimeUnit.SECONDS.toMillis(seconds);
     }
 
-    public void setSpace(IJSpace space) {
-        this.space = (ISpaceProxy) space;
+    public void setUrlSpaceConfigurer(UrlSpaceConfigurer urlSpaceConfigurer) {
+        this.urlSpaceConfigurer = urlSpaceConfigurer;
     }
 
-    public IJSpace getSpace() {
-        return space;
+    public void setSpace(GigaSpace gigaSpace) {
+        this.gigaSpace = gigaSpace;
     }
 
-    public void setSpaceUrl(String url) {
-        spaceUrl = url;
-    }
-
-    public String getSpaceUrl() {
-        return spaceUrl;
-    }
-
-    public ClusterInfo getClusterInfo() {
-        return clusterInfo;
-    }
-
-    public void setClusterInfo(ClusterInfo clusterInfo) {
-        this.clusterInfo = clusterInfo;
-    }
-
-    public BeanLevelProperties getBeanLevelProperties() {
-        return beanLevelProperties;
-    }
-
-    public void setBeanLevelProperties(BeanLevelProperties beanLevelProperties) {
-        this.beanLevelProperties = beanLevelProperties;
+    public GigaSpace getSpace() {
+        return gigaSpace;
     }
 
     /**
@@ -248,24 +209,22 @@ public class GigaSessionManager extends AbstractSessionManager {
      * another node.
      */
     @Override
-    public Session getSession(String idInCluster) {
+    public AbstractSession getSession(String idInCluster) {
 
         // TODO do we really need to synchronize on (this) here? It used to be like that
         try {
-            SessionData data = fetch(idInCluster);
+            SessionData data = gigaSpace.readById(SessionData.newIdQuery(idInCluster));
 
-            Session session;
             if (data == null) {
-                //No session in cloud with matching id and context path.
-                session = null;
-                if (Log.isDebugEnabled()) Log.debug("No session matching id [" + idInCluster + "]");
-            } else {
-                session = new Session(this, data);
-                if (Log.isDebugEnabled()) Log.debug("Found matching session [" + idInCluster + "]");
+                if (Log.getLog().isDebugEnabled())
+                    Log.getLog().debug("No session matching id [" + idInCluster + "]");
+                return null;
             }
-            return session;
+            if (Log.getLog().isDebugEnabled())
+                Log.getLog().debug("Found matching session [" + idInCluster + "]");
+            return new Session(data);
         } catch (Exception e) {
-            Log.warn("Unable to load session", e);
+            Log.getLog().warn("Unable to load session", e);
             return null;
         }
     }
@@ -282,9 +241,9 @@ public class GigaSessionManager extends AbstractSessionManager {
         long now = System.currentTimeMillis();
         if (lastSessionCount == -1 || (now - lastCountSessionsTime) > countSessionPeriod) {
             try {
-                lastSessionCount = space.count(new SessionData(), null);
+                lastSessionCount = gigaSpace.count(new SessionData());
             } catch (Exception e) {
-                Log.warn("Failed to execute count of sessions", e);
+                Log.getLog().warn("Failed to execute count of sessions", e);
             }
             lastCountSessionsTime = now;
         }
@@ -298,7 +257,7 @@ public class GigaSessionManager extends AbstractSessionManager {
     }
 
     @Override
-    protected void invalidateSessions() {
+    protected void shutdownSessions() throws Exception {
         //Do nothing - we don't want to remove and
         //invalidate all the sessions because this
         //method is called from doStop(), and just
@@ -307,60 +266,45 @@ public class GigaSessionManager extends AbstractSessionManager {
         //any other nodes
     }
 
-
     @Override
     protected AbstractSession newSession(HttpServletRequest request) {
-        return new Session(this, request);
+        return new Session(request);
     }
 
     @Override
     protected boolean removeSession(String idInCluster) {
         try {
-            return delete(idInCluster);
+            return gigaSpace.clear(SessionData.newIdQuery(idInCluster), ClearModifiers.NONE) != 0;
         } catch (Exception e) {
-            Log.warn("Failed to remove session with id [" + idInCluster + "]", e);
+            Log.getLog().warn("Failed to remove session with id [" + idInCluster + "]", e);
             return false;
         }
     }
 
-
     @Override
-    public void removeSession(AbstractSession abstractSession, boolean invalidate) {
+    public boolean removeSession(AbstractSession abstractSession, boolean invalidate) {
         if (!(abstractSession instanceof GigaSessionManager.Session))
             throw new IllegalStateException("Session is not a GigaspacesSessionManager.Session " + abstractSession);
 
-        GigaSessionManager.Session session = (GigaSessionManager.Session) abstractSession;
-
         //TODO there was synchronize on both sessionIdManager and this here, do we really need it?
 
-        boolean removed = false;
-        try {
-            removed = delete(getClusterId(session));
-        } catch (Exception e) {
-            Log.warn("Failed to remove session [" + getClusterId(session) + "]", e);
-        }
+        String sessionId = getClusterId(abstractSession);
+        boolean removed = removeSession(sessionId);
         if (removed) {
-            _sessionIdManager.removeSession(session);
+            _sessionIdManager.removeSession(abstractSession);
             if (invalidate)
-                _sessionIdManager.invalidateAll(getClusterId(session));
+                _sessionIdManager.invalidateAll(sessionId);
         }
 
         if (invalidate && _sessionListeners != null) {
-            HttpSessionEvent event = new HttpSessionEvent(session);
+            HttpSessionEvent event = new HttpSessionEvent(abstractSession);
             for (int i = LazyList.size(_sessionListeners); i-- > 0; )
                 ((HttpSessionListener) LazyList.get(_sessionListeners, i)).sessionDestroyed(event);
         }
         if (!invalidate) {
-            session.willPassivate();
+            abstractSession.willPassivate();
         }
-    }
-
-
-    public void invalidateSession(String idInCluster) {
-        Session session = getSession(idInCluster);
-        if (session != null) {
-            session.invalidate();
-        }
+        return removed;
     }
 
     @Override
@@ -374,12 +318,12 @@ public class GigaSessionManager extends AbstractSessionManager {
         GigaSessionManager.Session session = (GigaSessionManager.Session) abstractSession;
 
         try {
-            add(session._data);
+            gigaSpace.write(session._data, lease);
+
         } catch (Exception e) {
-            Log.warn("Problem writing new SessionData to space ", e);
+            Log.getLog().warn("Problem writing new SessionData to space ", e);
         }
     }
-
 
     /**
      * Look for expired sessions that we know about in our
@@ -399,16 +343,17 @@ public class GigaSessionManager extends AbstractSessionManager {
             if (_loader != null)
                 thread.setContextClassLoader(_loader);
             long now = System.currentTimeMillis();
-            if (Log.isDebugEnabled())
-                Log.debug("Scavenging old sessions, expiring before: " + (now));
+            if (Log.getLog().isDebugEnabled())
+                Log.getLog().debug("Scavenging old sessions, expiring before: " + (now));
             Object[] expiredSessions;
             do {
-                expiredSessions = findExpiredSessions((now));
+                expiredSessions = gigaSpace.readMultiple(
+                        new SQLQuery<SessionData>(SessionData.class, "expiryTime < ?", now), 100);
                 for (int i = 0; i < expiredSessions.length; i++) {
-                    if (Log.isDebugEnabled()) Log.debug("Timing out expired session " + expiredSessions[i]);
-                    GigaSessionManager.Session expiredSession = new GigaSessionManager.Session(GigaSessionManager.this, (SessionData) expiredSessions[i]);
+                    if (Log.getLog().isDebugEnabled()) Log.getLog().debug("Timing out expired session " + expiredSessions[i]);
+                    Session expiredSession = new Session((SessionData) expiredSessions[i]);
                     expiredSession.timeout();
-                    if (Log.isDebugEnabled()) Log.debug("Expiring old session " + expiredSession._data);
+                    if (Log.getLog().isDebugEnabled()) Log.getLog().debug("Expiring old session " + expiredSession._data);
                 }
             } while (expiredSessions.length > 0);
 
@@ -418,36 +363,10 @@ public class GigaSessionManager extends AbstractSessionManager {
             if (t instanceof ThreadDeath)
                 throw ((ThreadDeath) t);
 
-            Log.warn("Problem scavenging sessions", t);
+            Log.getLog().warn("Problem scavenging sessions", t);
         } finally {
             thread.setContextClassLoader(origClassLoader);
         }
-    }
-
-
-    protected void add(SessionData data) throws Exception {
-        space.write(data, null, lease);
-    }
-
-    protected boolean delete(String id) throws Exception {
-        SessionData sd = new SessionData();
-        sd.setId(id);
-        return space.take(sd, null, 0) != null;
-    }
-
-    protected void update(SessionData data) throws Exception {
-        space.write(data, null, lease);
-        if (Log.isDebugEnabled()) Log.debug("Wrote session " + data.toStringExtended());
-    }
-
-    protected SessionData fetch(String sessionId) throws Exception {
-        return (SessionData) space.readById(SESSION_DATA_CLASSNAME, sessionId, sessionId, null, 0, 0, false, QueryResultTypeInternal.OBJECT_JAVA, null);
-    }
-
-    protected Object[] findExpiredSessions(long timestamp) throws Exception {
-        SQLQuery<SessionData> query = new SQLQuery<SessionData>(SessionData.class, "expiryTime < ?");
-        query.setParameter(1, timestamp);
-        return space.readMultiple(query, null, 100);
     }
 
     /**
@@ -456,7 +375,6 @@ public class GigaSessionManager extends AbstractSessionManager {
      * A session in memory of a Context. Adds behavior around SessionData.
      */
     public class Session extends AbstractSession {
-        private static final long serialVersionUID = -2019532886095399423L;
 
         private final SessionData _data;
 
@@ -465,8 +383,8 @@ public class GigaSessionManager extends AbstractSessionManager {
         /**
          * Session from a request.
          */
-        protected Session(AbstractSessionManager manager, HttpServletRequest request) {
-            super(manager, request);
+        protected Session(HttpServletRequest request) {
+            super(GigaSessionManager.this, request);
             _data = new SessionData(getClusterId());
             _data.setMaxIdleMs(TimeUnit.SECONDS.toMillis(_dftMaxIdleSecs));
             _data.setExpiryTime(getMaxInactiveInterval() < 0 ? Long.MAX_VALUE : (System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(getMaxInactiveInterval())));
@@ -479,11 +397,11 @@ public class GigaSessionManager extends AbstractSessionManager {
                 attributes.put(nextAttribute, request.getAttribute(nextAttribute));
             }
             _data.setAttributeMap(attributes);
-            if (Log.isDebugEnabled()) Log.debug("New Session from request, " + _data.toStringExtended());
+            if (Log.getLog().isDebugEnabled()) Log.getLog().debug("New Session from request, " + _data.toStringExtended());
         }
 
-        protected Session(AbstractSessionManager manager, SessionData data) {
-            super(manager, data.getCreated(), data.getAccessed(), data.getId());
+        protected Session(SessionData data) {
+            super(GigaSessionManager.this, data.getCreated(), data.getAccessed(), data.getId());
             _data = data;
             for (Map.Entry<String, Object> attribute : data.getAttributeMap().entrySet()) {
                 super.setAttribute(attribute.getKey(), attribute.getValue());
@@ -497,7 +415,7 @@ public class GigaSessionManager extends AbstractSessionManager {
             }
             _data.setAttributeMap(attributes);
 
-            if (Log.isDebugEnabled()) Log.debug("New Session from existing session data " + _data.toStringExtended());
+            if (Log.getLog().isDebugEnabled()) Log.getLog().debug("New Session from existing session data " + _data.toStringExtended());
         }
 
         @Override
@@ -564,13 +482,16 @@ public class GigaSessionManager extends AbstractSessionManager {
                 if (_dirty || (_data.getAccessed() - _data.getLastSaved()) >= (_savePeriodMs)) {
                     _data.setLastSaved(System.currentTimeMillis());
                     willPassivate();
-                    update(_data);
+                    gigaSpace.write(_data, lease);
+                    if (Log.getLog().isDebugEnabled())
+                        Log.getLog().debug("Wrote session " + _data.toStringExtended());
+
                     didActivate();
-                    if (Log.isDebugEnabled())
-                        Log.debug("Dirty=" + _dirty + ", accessed-saved=" + _data.getAccessed() + "-" + _data.getLastSaved() + ", savePeriodMs=" + _savePeriodMs);
+                    if (Log.getLog().isDebugEnabled())
+                        Log.getLog().debug("Dirty=" + _dirty + ", accessed-saved=" + _data.getAccessed() + "-" + _data.getLastSaved() + ", savePeriodMs=" + _savePeriodMs);
                 }
             } catch (Exception e) {
-                Log.warn("Problem persisting changed session data id=" + getId(), e);
+                Log.getLog().warn("Problem persisting changed session data id=" + getId(), e);
             } finally {
                 _dirty = false;
             }
@@ -578,29 +499,9 @@ public class GigaSessionManager extends AbstractSessionManager {
 
         @Override
         protected void timeout() throws IllegalStateException {
-            if (Log.isDebugEnabled()) Log.debug("Timing out session id=" + getClusterId());
+            if (Log.getLog().isDebugEnabled())
+                Log.getLog().debug("Timing out session id=" + getClusterId());
             super.timeout();
         }
-
-        @Override
-        public void willPassivate() {
-            super.willPassivate();
-        }
-
-        @Override
-        public void didActivate() {
-            super.didActivate();
-        }
-
-        @Override
-        public String getClusterId() {
-            return super.getClusterId();
-        }
-
-        @Override
-        public String getNodeId() {
-            return super.getNodeId();
-        }
     }
-
 }

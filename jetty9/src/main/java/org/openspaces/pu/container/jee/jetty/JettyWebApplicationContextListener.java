@@ -30,8 +30,10 @@ import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHandler;
 import org.eclipse.jetty.util.LazyList;
 import org.openspaces.core.GigaSpace;
+import org.openspaces.core.GigaSpaceConfigurer;
 import org.openspaces.core.cluster.ClusterInfo;
 import org.openspaces.core.properties.BeanLevelProperties;
+import org.openspaces.core.space.UrlSpaceConfigurer;
 import org.openspaces.jee.sessions.jetty.GigaSessionIdManager;
 import org.openspaces.jee.sessions.jetty.GigaSessionManager;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
@@ -109,25 +111,26 @@ public class JettyWebApplicationContextListener implements ServletContextListene
                 }
 
                 GigaSessionManager gigaSessionManager = new GigaSessionManager();
-                gigaSessionManager.setSpaceUrl(sessionsSpaceUrl);
-                gigaSessionManager.setBeanLevelProperties(beanLevelProperties);
-                gigaSessionManager.setClusterInfo(clusterInfo);
+                if (sessionsSpaceUrl == null)
+                    throw new IllegalStateException("No url for space");
 
                 if (sessionsSpaceUrl.startsWith("bean://")) {
                     ApplicationContext applicationContext = (ApplicationContext) servletContext.getAttribute(JeeProcessingUnitContainerProvider.APPLICATION_CONTEXT_CONTEXT);
                     if (applicationContext == null) {
                         throw new IllegalStateException("Failed to find servlet context bound application context");
                     }
-                    IJSpace space;
+                    GigaSpace space;
                     Object bean = applicationContext.getBean(sessionsSpaceUrl.substring("bean://".length()));
                     if (bean instanceof GigaSpace) {
-                        space = ((GigaSpace) bean).getSpace();
+                        space = (GigaSpace) bean;
                     } else if (bean instanceof IJSpace) {
-                        space = (IJSpace) bean;
+                        space = new GigaSpaceConfigurer((IJSpace) bean).create();
                     } else {
                         throw new IllegalArgumentException("Bean [" + bean + "] is not of either GigaSpace type or IJSpace type");
                     }
                     gigaSessionManager.setSpace(space);
+                } else {
+                    gigaSessionManager.setUrlSpaceConfigurer(new UrlSpaceConfigurer(sessionsSpaceUrl).clusterInfo(clusterInfo));
                 }
 
                 String scavangePeriod = beanLevelProperties.getContextProperties().getProperty(JETTY_SESSIONS_SCAVENGE_PERIOD);

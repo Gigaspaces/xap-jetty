@@ -16,52 +16,20 @@
 
 package org.openspaces.pu.container.jee.jetty.holder;
 
-import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.util.MultiException;
 
 /**
  * A plain wrapper around jetty. Simply delegate the lifecycle calls directory to jetty.
  *
  * @author kimchy
  */
-public class PlainJettyHolder implements JettyHolder {
+public class PlainJettyHolder extends JettyHolder {
 
     private Server server;
 
     public PlainJettyHolder(Server server) {
         this.server = server;
         server.setStopAtShutdown(false);
-    }
-
-    public void openConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
-        for (Connector c : connectors) {
-            c.open();
-        }
-    }
-
-    public void closeConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
-        MultiException ex = new MultiException();
-        for (Connector c : connectors) {
-            try {
-                c.close();
-            }
-            catch (Exception e) {
-                ex.add(e);
-            }
-        }
-        ex.ifExceptionThrowMulti();
-    }
-
-    public void start() throws Exception {
-        server.start();
-    }
-
-    public void stop() throws Exception {
-        server.stop();
-        server.destroy();
     }
 
     public Server getServer() {

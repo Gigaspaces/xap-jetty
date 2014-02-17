@@ -17,7 +17,6 @@
  ******************************************************************************/
 package org.openspaces.pu.container.jee.stats;
 
-import org.eclipse.jetty.server.AbstractHttpConnection;
 import org.eclipse.jetty.server.Response;
 
 import javax.servlet.ServletResponse;
@@ -28,10 +27,9 @@ import javax.servlet.ServletResponse;
 public class JettyHttpResponseStatus implements HttpResponseStatus {
 
     public int getStatus(ServletResponse response) {
-        final Response jettyResponse = (response instanceof Response) ? ((Response) response) : AbstractHttpConnection.getCurrentConnection().getResponse();
-        if (jettyResponse != null) {
-            return jettyResponse.getStatus();
-        }
-        return -1;
+        final Response jettyResponse = response instanceof Response
+                ? ((Response) response)
+                : org.eclipse.jetty.server.HttpConnection.getCurrentConnection().getHttpChannel().getResponse();
+        return jettyResponse != null ? jettyResponse.getStatus() : -1;
     }
 }

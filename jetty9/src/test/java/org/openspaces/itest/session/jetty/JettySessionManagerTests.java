@@ -47,7 +47,7 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         server = new Server();
         idManager = new GigaSessionIdManager(server);
         sessionManager = new GigaSessionManager();
-        sessionManager.setSpace(gigaSpace.getSpace());
+        sessionManager.setSpace(gigaSpace);
         sessionManager.setMaxInactiveInterval(3);
         handler = new SessionHandler(sessionManager);
         idManager.setWorkerName("node0");

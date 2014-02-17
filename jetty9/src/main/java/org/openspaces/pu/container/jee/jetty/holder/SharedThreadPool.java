@@ -48,8 +48,9 @@ public class SharedThreadPool implements ThreadPool, LifeCycle {
         }
     }
 
-    public boolean dispatch(Runnable runnable) {
-        return threadPool.dispatch(runnable);
+    @Override
+    public void execute(Runnable command) {
+        threadPool.execute(command);
     }
 
     public void join() throws InterruptedException {

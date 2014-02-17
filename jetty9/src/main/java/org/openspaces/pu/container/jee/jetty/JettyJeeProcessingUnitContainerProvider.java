@@ -329,19 +329,14 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
                 boolean success = false;
                 for (int i = 0; i < retryPortCount; i++) {
                     for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                        if (connector.getPort() != 0) {
-                            FreePortGenerator.PortHandle portHandle = freePortGenerator.nextAvailablePort(connector.getPort(), retryPortCount);
-                            for (Connector connector1 : jettyHolder.getServer().getConnectors()) {
-                                if (connector1 instanceof AbstractConnector) {
-                                    if (connector.getPort() == connector1.getConfidentialPort()) {
-                                        // if the confidential port of one connectors points to this connector that we are changing its port
-                                        // then update it as well
-                                        ((AbstractConnector) connector1).setConfidentialPort(portHandle.getPort());
-                                    }
-                                }
+                        if (connector instanceof ServerConnector) {
+                            int port = ((ServerConnector)connector).getPort();
+                            if (port != 0) {
+                                FreePortGenerator.PortHandle portHandle = freePortGenerator.nextAvailablePort(port, retryPortCount);
+                                jettyHolder.updateConfidentialPort(port, portHandle.getPort());
+                                ((ServerConnector)connector).setPort(portHandle.getPort());
+                                portHandles.add(portHandle);
                             }
-                            connector.setPort(portHandle.getPort());
-                            portHandles.add(portHandle);
                         }
                     }
 
@@ -361,16 +356,11 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
                             // ignore
                         }
                         for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                            for (Connector connector1 : jettyHolder.getServer().getConnectors()) {
-                                if (connector1 instanceof AbstractConnector) {
-                                    if (connector.getPort() == connector1.getConfidentialPort()) {
-                                        // if the confidential port of one connectors points to this connector that we are changing its port
-                                        // then update it as well
-                                        ((AbstractConnector) connector1).setConfidentialPort(connector.getPort() + 1);
-                                    }
-                                }
+                            if (connector instanceof ServerConnector) {
+                                int port = ((ServerConnector)connector).getPort();
+                                jettyHolder.updateConfidentialPort(port, port + 1);
+                                ((ServerConnector)connector).setPort(port + 1);
                             }
-                            connector.setPort(connector.getPort() + 1);
                         }
                     } catch (Exception e) {
                         for (FreePortGenerator.PortHandle portHandle : portHandles) {
@@ -393,7 +383,18 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
                 }
             }
             for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                logger.info("Using Jetty server connector [" + connector.getClass().getName() + "], Host [" + connector.getHost() + "], Port [" + connector.getPort() + "], Confidential Port [" + connector.getConfidentialPort() + "]");
+                if (connector instanceof NetworkConnector) {
+                    NetworkConnector networkConnector = (NetworkConnector) connector;
+                    logger.info("Using Jetty server connector [" + connector.getClass().getName() +
+                            "], Host [" + networkConnector.getHost() +
+                            "], Port [" + networkConnector.getPort() +
+                            "], Confidential Port [" + JettyHolder.getConfidentialPort(networkConnector)
+                            + "]");
+
+                }
+                else {
+                    logger.info("Using Jetty server connector [" + connector.getClass().getName() + "]");
+                }
             }
 
             try {
@@ -412,19 +413,13 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
 
             String jmxEnabled = beanLevelProperties.getContextProperties().getProperty(JETTY_JMX_PROP, "false");
             if ("true".equals(jmxEnabled)) {
-                MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
-                MBeanContainer mBeanContainer = new MBeanContainer(mBeanServer);
+                MBeanContainer mBeanContainer = new MBeanContainer(ManagementFactory.getPlatformMBeanServer());
                 String domain = "gigaspaces.jetty";
                 if (!jettyHolder.isSingleInstance()) {
                     domain += "." + clusterInfo.getName() + "." + clusterInfo.getRunningNumberOffset1();
                 }
                 mBeanContainer.setDomain(domain);
-                jettyHolder.getServer().getContainer().addEventListener(mBeanContainer);
-                try {
-                    mBeanContainer.start();
-                } catch (Exception e) {
-                    logger.warn("Failed to start jetty mbean container", e);
-                }
+                jettyHolder.getServer().addEventListener(mBeanContainer);
             }
 
             try {

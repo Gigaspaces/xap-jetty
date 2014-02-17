@@ -20,6 +20,7 @@ import com.gigaspaces.annotation.pojo.SpaceClass;
 import com.gigaspaces.annotation.pojo.SpaceId;
 import com.gigaspaces.annotation.pojo.SpaceProperty;
 import com.gigaspaces.annotation.pojo.SpaceRouting;
+import com.gigaspaces.query.IdQuery;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -198,4 +199,9 @@ public class SessionData implements Externalizable {
     public String toStringExtended() {
         return toString() + "values=" + _attributes;
     }
+
+    public static IdQuery<SessionData> newIdQuery(String id) {
+        return new IdQuery<SessionData>(SessionData.class, id);
+    }
+
 }

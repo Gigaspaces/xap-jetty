@@ -16,7 +16,8 @@
 
 package org.openspaces.pu.container.jee.jetty.holder;
 
-import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.util.MultiException;
 
 /**
  * A generic holder that holds a Jetty server and controls its lifecycle. Note,
@@ -24,35 +25,89 @@ import org.eclipse.jetty.server.Server;
  *
  * @author kimchy
  */
-public interface JettyHolder {
-
-    /**
-     * Open Jetty ports.
-     */
-    void openConnectors() throws Exception;
-
-    /**
-     * Closes Jetty ports.
-     */
-    void closeConnectors() throws Exception;
-
-    /**
-     * Start Jetty. Note, if this fails, make sure to call {@link #stop()}
-     */
-    void start() throws Exception;
-
-    /**
-     * Stops Jetty.
-     */
-    void stop() throws Exception;
+public abstract class JettyHolder {
 
     /**
      * Returns the jetty server.
      */
-    Server getServer();
+    public abstract Server getServer();
 
     /**
      * Returns <code>true</code> if this is a single instance.
      */
-    boolean isSingleInstance();
+    public abstract boolean isSingleInstance();
+
+    /**
+     * Open Jetty ports.
+     */
+    public void openConnectors() throws Exception {
+        Server server = getServer();
+        Connector[] connectors = server.getConnectors();
+        for (Connector c : connectors) {
+            if (c instanceof NetworkConnector)
+                ((NetworkConnector)c).open();
+        }
+
+    }
+
+    /**
+     * Closes Jetty ports.
+     */
+    public void closeConnectors() throws Exception {
+        Server server = getServer();
+        Connector[] connectors = server.getConnectors();
+        MultiException ex = new MultiException();
+        for (Connector c : connectors) {
+            try {
+                if (c instanceof NetworkConnector)
+                    ((NetworkConnector)c).close();
+            }
+            catch (Exception e) {
+                ex.add(e);
+            }
+        }
+        ex.ifExceptionThrowMulti();
+
+    }
+
+    /**
+     * Start Jetty. Note, if this fails, make sure to call {@link #stop()}
+     */
+    public void start() throws Exception {
+        Server server = getServer();
+        server.start();
+    }
+
+    /**
+     * Stops Jetty.
+     */
+    public void stop() throws Exception {
+        Server server = getServer();
+        server.stop();
+        server.destroy();
+    }
+
+    public void updateConfidentialPort(int port, int newPort) {
+
+        Server server = getServer();
+        for (Connector connector : server.getConnectors()) {
+            HttpConfiguration config = getHttpConfig(connector);
+            if (config != null && config.getSecurePort() == port) {
+                // if the confidential port of one connectors points to this connector that we are changing its port
+                // then update it as well
+                config.setSecurePort(newPort);
+            }
+        }
+    }
+
+    public static int getConfidentialPort(Connector connector) {
+        //return connector.getConfidentialPort();
+        HttpConfiguration config = getHttpConfig(connector);
+        return config != null ? config.getSecurePort() : -1;
+    }
+
+    public static HttpConfiguration getHttpConfig(Connector connector) {
+        HttpConnectionFactory connectionFactory = connector.getConnectionFactory(HttpConnectionFactory.class);
+        return connectionFactory != null ? connectionFactory.getHttpConfiguration() : null;
+    }
 }

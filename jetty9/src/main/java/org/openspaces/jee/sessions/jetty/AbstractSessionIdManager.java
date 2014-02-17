@@ -16,7 +16,6 @@
 
 package org.openspaces.jee.sessions.jetty;
 
-import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.SessionIdManager;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
 import org.eclipse.jetty.util.log.Log;
@@ -38,18 +37,6 @@ public abstract class AbstractSessionIdManager extends AbstractLifeCycle impleme
     protected Random _random;
     protected boolean _weakRandom;
     protected String _workerName;
-    protected Server _server;
-
-
-    public AbstractSessionIdManager(Server server) {
-        _server = server;
-    }
-
-
-    public AbstractSessionIdManager(Server server, Random random) {
-        _random = random;
-        _server = server;
-    }
 
     public String getWorkerName() {
         return _workerName;
@@ -140,7 +127,7 @@ public abstract class AbstractSessionIdManager extends AbstractLifeCycle impleme
                     _weakRandom = false;
                 }
                 catch (NoSuchAlgorithmException e_alt) {
-                    Log.warn("Could not generate SecureRandom for session-id randomness", e);
+                    Log.getLog().warn("Could not generate SecureRandom for session-id randomness", e);
                     _random = new Random();
                     _weakRandom = true;
                 }

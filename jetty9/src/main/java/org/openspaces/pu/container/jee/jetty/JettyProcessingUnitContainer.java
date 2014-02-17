@@ -18,6 +18,8 @@ package org.openspaces.pu.container.jee.jetty;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.NetworkConnector;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.webapp.WebAppContext;
 import org.jini.rio.boot.BootUtil;
@@ -84,19 +86,28 @@ public class JettyProcessingUnitContainer implements org.openspaces.pu.container
     }
 
     public JeeServiceDetails getJeeDetails() {
-        int port = jettyHolder.getServer().getConnectors()[0].getPort();
-        String host = jettyHolder.getServer().getConnectors()[0].getHost();
-        if (host == null) {
-            try {
-                host = BootUtil.getHostAddress();
-            } catch (UnknownHostException e) {
-                logger.warn("Unknown host exception", e);
+        String hostAddress = null;
+        int port = -1;
+        int sslPort = -1;
+
+        Connector connector = jettyHolder.getServer().getConnectors()[0];
+        if (connector instanceof NetworkConnector) {
+            NetworkConnector networkConnector = (NetworkConnector) connector;
+            port = networkConnector.getPort();
+            sslPort = JettyHolder.getConfidentialPort(connector);
+            String host = networkConnector.getHost();
+            if (host == null) {
+                try {
+                    host = BootUtil.getHostAddress();
+                } catch (UnknownHostException e) {
+                    logger.warn("Unknown host exception", e);
+                }
             }
+            InetSocketAddress addr = host == null ? new InetSocketAddress(port) : new InetSocketAddress(host, port);
+            hostAddress = addr.getAddress().getHostAddress();
+
         }
-        InetSocketAddress addr = host == null ? new InetSocketAddress(port) : new InetSocketAddress(host, port);
-        JeeServiceDetails details = new JeeServiceDetails(addr.getAddress().getHostAddress(),
-                port,
-                jettyHolder.getServer().getConnectors()[0].getConfidentialPort(),
+        JeeServiceDetails details = new JeeServiceDetails(hostAddress, port, sslPort,
                 webAppContext.getContextPath(),
                 jettyHolder.isSingleInstance(),
                 "jetty",

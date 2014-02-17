@@ -16,18 +16,16 @@
 
 package org.openspaces.jee.sessions.jetty;
 
-import com.j_spaces.core.IJSpace;
-import com.j_spaces.core.client.ReadModifiers;
-import net.jini.core.lease.Lease;
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.session.AbstractSession;
 import org.eclipse.jetty.server.session.AbstractSessionManager;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.webapp.WebAppContext;
+import org.openspaces.core.GigaSpace;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpSession;
-import java.util.Random;
 
 /**
  * GigaspacesSessionIdManager
@@ -37,35 +35,68 @@ import java.util.Random;
  */
 public class GigaSessionIdManager extends AbstractSessionIdManager {
 
-    protected IJSpace space;
+    protected final Server _server;
 
-    private long lease = Lease.FOREVER;
+    protected GigaSpace gigaSpace;
 
     public GigaSessionIdManager(Server server) {
-        super(server);
+        this._server = server;
     }
 
-    public GigaSessionIdManager(Server server, Random random) {
-        super(server, random);
+    public void setSpace(GigaSpace gigaSpace) {
+        this.gigaSpace = gigaSpace;
     }
 
-    public void setSpace(IJSpace space) {
-        this.space = space;
-    }
-
-    public IJSpace getSpace() {
-        return space;
+    public GigaSpace getSpace() {
+        return gigaSpace;
     }
 
     /**
-     * Sets the lease in seconds of Session Ids written to the Space.
+     * Start up the id manager.
      */
-    public void setLease(long lease) {
-        this.lease = lease * 1000;
+    public void doStart() {
+        try {
+            if (gigaSpace == null) {
+                initSpace();
+            }
+            super.doStart();
+        } catch (Exception e) {
+            Log.getLog().warn("Problem initialising session ids", e);
+            throw new IllegalStateException(e);
+        }
+    }
+
+    protected void initSpace() throws Exception {
+        if (gigaSpace == null) {
+            throw new IllegalStateException("No space configured");
+        }
     }
 
     public void addSession(HttpSession session) {
         // do nothing, we use SessionData
+    }
+
+    public void removeSession(HttpSession session) {
+        // do nothing, we reused the SessionData
+    }
+
+    @Override
+    public void renewSessionId(String oldClusterId, String oldNodeId, HttpServletRequest request) {
+        try {
+            SessionData sessionData = gigaSpace.takeById(SessionData.newIdQuery(oldClusterId));
+            if (sessionData == null) {
+                if (Log.getLog().isDebugEnabled())
+                    Log.getLog().debug("Cannot renew session Id [" + oldClusterId + "] - does not exist in space");
+            } else {
+                String newClusterId = getClusterId(request.getRequestedSessionId());
+                sessionData.setId(newClusterId);
+                gigaSpace.write(sessionData);
+                if (Log.getLog().isDebugEnabled())
+                    Log.getLog().debug("Renewed session Id [" + oldClusterId + "] to [" + newClusterId + "]");
+            }
+        } catch (Exception e) {
+            Log.getLog().warn("Failed to renew [oldClusterId=" + oldClusterId + ", oldNodeId=" + oldNodeId + "]", e);
+        }
     }
 
     public String getClusterId(String nodeId) {
@@ -74,24 +105,23 @@ public class GigaSessionIdManager extends AbstractSessionIdManager {
     }
 
     public String getNodeId(String clusterId, HttpServletRequest request) {
-        if (_workerName != null)
-            return clusterId + '.' + _workerName;
-
-        return clusterId;
+        return _workerName != null ? clusterId + '.' + _workerName : clusterId;
     }
 
+    @Override
     public boolean idInUse(String id) {
         if (id == null)
             return false;
 
+        final String sessionId = getClusterId(id);
         try {
-            SessionData sessionData = new SessionData(getClusterId(id));
-            int count = space.count(sessionData, null, ReadModifiers.MATCH_BY_ID);
-            if (Log.isDebugEnabled())
-                Log.debug("Id [" + id + "] " + (count > 0 ? "exists" : "does not exist") + " in space");
-            return count > 0;
+            int count = gigaSpace.count(SessionData.newIdQuery(sessionId));
+            boolean exists = count > 0;
+            if (Log.getLog().isDebugEnabled())
+                Log.getLog().debug("Id [" + id + "] " + (exists ? "exists" : "does not exist") + " in space");
+            return exists;
         } catch (Exception e) {
-            Log.warn("Problem checking inUse for id=" + getClusterId(id), e);
+            Log.getLog().warn("Problem checking inUse for id=" + sessionId, e);
             return false;
         }
     }
@@ -102,35 +132,10 @@ public class GigaSessionIdManager extends AbstractSessionIdManager {
         Handler[] contexts = _server.getChildHandlersByClass(WebAppContext.class);
         for (int i = 0; contexts != null && i < contexts.length; i++) {
             AbstractSessionManager manager = ((AbstractSessionManager) ((WebAppContext) contexts[i]).getSessionHandler().getSessionManager());
-            if (manager instanceof GigaSessionManager) {
-                ((GigaSessionManager) manager).invalidateSession(id);
+            AbstractSession session = manager.getSession(id);
+            if (session != null) {
+                session.invalidate();
             }
-        }
-    }
-
-    public void removeSession(HttpSession session) {
-        // do nothing, we reused the SessionData
-    }
-
-
-    /**
-     * Start up the id manager.
-     */
-    public void doStart() {
-        try {
-            if (space == null) {
-                initSpace();
-            }
-            super.doStart();
-        } catch (Exception e) {
-            Log.warn("Problem initialising session ids", e);
-            throw new IllegalStateException(e);
-        }
-    }
-
-    protected void initSpace() throws Exception {
-        if (space == null) {
-            throw new IllegalStateException("No space configured");
         }
     }
 }
