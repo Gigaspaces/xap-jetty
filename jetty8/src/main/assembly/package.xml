@@ -1,0 +1,56 @@
+<assembly
+	xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0 http://maven.apache.org/xsd/assembly-1.1.0.xsd">
+	<id>package</id>
+	<formats>
+		<format>zip</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+	<fileSets>
+		<!--  non lib directories -->
+		<fileSet>
+			<directory>${project.basedir}</directory>
+			<outputDirectory>/</outputDirectory>
+			<includes>
+				<include>bin/pu*</include>
+				<include>bin/gs-m*</include>
+				<include>deploy/**</include>
+				<include>tools/**</include>
+			</includes>
+			<excludes>
+				<exclude>tools/maven/maven-openspaces-plugin/target/**</exclude>
+				<exclude>tools/maven/apache-maven-3.0.2/**</exclude>
+				<exclude>tools/**/*.iml</exclude>
+				<exclude>tools/gshell/**</exclude>
+			</excludes>
+		</fileSet>
+		
+		
+		<fileSet>
+			<directory>${project.build.directory}</directory>
+			<outputDirectory>/lib/platform/openspaces</outputDirectory>
+			<includes>
+				<include>${project.artifactId}.jar</include>
+			</includes>
+		</fileSet>
+		<fileSet>
+			<directory>${project.build.directory}/dependency</directory>
+			<outputDirectory>/lib/platform/jetty</outputDirectory>
+			<includes>
+				<include>jetty-*</include>
+				<include>javax.servlet.jsp.jstl-*</include>
+				<include>javax.servlet.jsp-*</include>
+				<include>javax.el-*</include>
+				<include>com.sun.el-*</include>
+				<include>org.apache.jasper.glassfish-*</include>
+				<include>org.apache.taglibs.standard.glassfish-*</include>
+				<include>ecj-*</include>
+				<include>javax.servlet-api-*</include>
+			</includes>
+			<excludes>
+				<exclude>jetty-all-*</exclude>
+			</excludes>
+		</fileSet>
+	</fileSets>
+</assembly>
