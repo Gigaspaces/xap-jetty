@@ -59,7 +59,7 @@
 
     <bean id="jetty" class="org.eclipse.jetty.server.Server">
 
-        <property name="threadPool">
+        <constructor-arg>
             <bean class="org.openspaces.pu.container.jee.jetty.holder.SharedThreadPool">
                 <constructor-arg>
                     <bean class="org.eclipse.jetty.util.thread.QueuedThreadPool">
@@ -68,18 +68,33 @@
                     </bean>
                 </constructor-arg>
             </bean>
-        </property>
+        </constructor-arg>
         
         <property name="connectors">
             <list>
-                <bean class="org.eclipse.jetty.server.nio.SelectChannelConnector">
+                <bean class="org.eclipse.jetty.server.ServerConnector">
+                    <constructor-arg ref="jetty"/>
+                    <constructor-arg name="factories">
+                        <list>
+                            <bean class="org.eclipse.jetty.server.HttpConnectionFactory">
+                                <constructor-arg>
+                                    <bean class="org.eclipse.jetty.server.HttpConfiguration">
+                                        <property name="securePort" ref="confidentialPort"/>
+                                    </bean>
+                                </constructor-arg>
+                            </bean>
+                        </list>
+                    </constructor-arg>
                     <property name="port" ref="port"/>
-                    <property name="maxIdleTime" value="${web.selector.maxIdleTime}"/>
+                    <property name="idleTimeout" value="${web.selector.maxIdleTime}"/>
                     <property name="acceptors" value="${web.selector.acceptors}"/>
+                    <!-- TODO: Review http://www.eclipse.org/jetty/documentation/current/statistics-handler.html
                     <property name="statsOn" value="${web.statsOn}"/>
-                    <property name="confidentialPort" ref="confidentialPort"/>
+                    -->
+                    <!-- TODO: Review http://www.eclipse.org/jetty/documentation/current/limit-load.html
                     <property name="lowResourcesConnections" value="${web.selector.lowResourcesConnections}"/>
                     <property name="lowResourcesMaxIdleTime" value="${web.selector.lowResourcesMaxIdleTime}"/>
+                    -->
                     <property name="forwarded" value="${web.selector.forwarded}" />
                 </bean>
             </list>
