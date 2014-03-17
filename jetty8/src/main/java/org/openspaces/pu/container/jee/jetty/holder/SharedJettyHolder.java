@@ -17,6 +17,8 @@
  ******************************************************************************/
 package org.openspaces.pu.container.jee.jetty.holder;
 
+import com.gigaspaces.internal.utils.SharedInstance;
+import com.gigaspaces.internal.utils.Singletons;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.Connector;
@@ -32,38 +34,34 @@ import org.eclipse.jetty.util.MultiException;
 public class SharedJettyHolder implements JettyHolder {
 
     private static final Log logger = LogFactory.getLog(SharedJettyHolder.class);
+    private static final String SHARED_JETTY_KEY = "jetty.server";
 
-    private static volatile Server server;
-
-    private static final Object serverLock = new Object();
-
-    private static volatile int serverCount = 0;
+    private final SharedInstance<Server> server;
 
     public SharedJettyHolder(Server localServer) {
-        synchronized (serverLock) {
-            if (server == null) {
-                server = localServer;
-                server.setStopAtShutdown(false);
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Usign new jetty server [" + server + "]");
-                }
-            } else {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Usign existing jetty server [" + server + "]");
-                }
+        SharedInstance<Server> newServer = new SharedInstance<Server>(localServer);
+        this.server = (SharedInstance<Server>)Singletons.putIfAbsent(SHARED_JETTY_KEY, newServer);
+        if (server == newServer) {
+            server.value().setStopAtShutdown(false);
+            if (logger.isInfoEnabled()) {
+                logger.info("Using new jetty server [" + server.value() + "]");
+            }
+        } else {
+            if (logger.isInfoEnabled()) {
+                logger.info("Using existing jetty server [" + server.value() + "]");
             }
         }
     }
 
     public void openConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
+        Connector[] connectors = server.value().getConnectors();
         for (Connector c : connectors) {
             c.open();
         }
     }
 
     public void closeConnectors() throws Exception {
-        Connector[] connectors = server.getConnectors();
+        Connector[] connectors = server.value().getConnectors();
         MultiException ex = new MultiException();
         for (Connector c : connectors) {
             try {
@@ -76,32 +74,28 @@ public class SharedJettyHolder implements JettyHolder {
         ex.ifExceptionThrowMulti();
     }
 
-
     public void start() throws Exception {
-        synchronized (serverLock) {
-            if (++serverCount == 1) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Starting jetty server [" + server + "]");
-                }
-                server.start();
+        if (server.increment() == 1) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Starting jetty server [" + server + "]");
             }
+            server.value().start();
         }
     }
 
     public void stop() throws Exception {
-        synchronized (serverLock) {
-            if (--serverCount == 0) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Stopping jetty server [" + server + "]");
-                }
-                server.stop();
-                server.destroy();
+        if (server.decrement() == 0) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Stopping jetty server [" + server + "]");
             }
+            server.value().stop();
+            server.value().destroy();
+            Singletons.remove(SHARED_JETTY_KEY);
         }
     }
 
     public Server getServer() {
-        return server;
+        return server.value();
     }
 
     public boolean isSingleInstance() {
