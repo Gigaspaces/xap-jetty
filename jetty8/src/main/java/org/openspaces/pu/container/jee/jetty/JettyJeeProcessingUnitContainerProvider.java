@@ -301,7 +301,7 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
         List<FreePortGenerator.PortHandle> portHandles = new ArrayList<FreePortGenerator.PortHandle>();
         try {
             try {
-                ClassLoaderHelper.setContextClassLoader(SharedServiceData.getJeeClassLoader("jetty"), true);
+                ClassLoaderHelper.setContextClassLoader(getJeeClassLoader(), true);
             } catch (Exception e) {
                 // ignore ...
             }
@@ -487,7 +487,7 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
             webAppContext.setDisplayName("web." + clusterInfo.getName() + "." + clusterInfo.getSuffix());
             // Provide our own extension to jetty class loader, so we can get the name for it in our logging
             ServiceClassLoader serviceClassLoader = (ServiceClassLoader) Thread.currentThread().getContextClassLoader();
-            JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(SharedServiceData.getJeeClassLoader("jetty"), webAppContext, serviceClassLoader.getLogName());
+            JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(getJeeClassLoader(), webAppContext, serviceClassLoader.getLogName());
 
             // add pu-common & web-pu-common jar files
             String gsLibOpt = System.getProperty(Locator.GS_LIB_OPTIONAL);
@@ -495,14 +495,15 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
             String gsWebPuCommon = System.getProperty("com.gs.web-pu-common", gsLibOpt + "web-pu-common");
             webAppClassLoader.addJars(new FileResource(new File(gsPuCommon).toURL()));
             webAppClassLoader.addJars(new FileResource(new File(gsWebPuCommon).toURL()));
+            webAppClassLoader.addClassPath(Locator.getJeeContainerJarPath(DEFAULT_CONTAINER));
             if (manifestURLs != null) {
                 for (URL url : manifestURLs) {
                     webAppClassLoader.addClassPath(new FileResource(url));
                 }
             }
-            
+
             webAppContext.setClassLoader(webAppClassLoader);
-            
+
             final String SESSION_MANAGER_BEAN = "sessionManager";
             if( applicationContext.containsBean( SESSION_MANAGER_BEAN ) ){
             	SessionManager sessionManager = 
@@ -544,7 +545,7 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
                 try {
                     // we set the parent class loader of the web application to be the jee container class loader
                     // this is to basically to hide the service class loader from it (and openspaces jars and so on)
-                    ClassLoaderHelper.setContextClassLoader(SharedServiceData.getJeeClassLoader("jetty"), true);
+                    ClassLoaderHelper.setContextClassLoader(getJeeClassLoader(), true);
                     webAppContext.start();
                 } catch (Exception e) {
                     throw new CannotCreateContainerException("Failed to start web app context", e);
@@ -579,5 +580,9 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
 
             CommonClassLoader.getInstance().setDisableSmartGetUrl(false);
         }
+    }
+
+    private static ClassLoader getJeeClassLoader() throws Exception {
+        return SharedServiceData.getJeeClassLoader(DEFAULT_CONTAINER);
     }
 }
