@@ -21,9 +21,7 @@ import com.gigaspaces.internal.utils.SharedInstance;
 import com.gigaspaces.internal.utils.Singletons;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.util.MultiException;
 
 /**
  * A shared jetty holder that keeps upon first construction will store a static jetty instance and will
@@ -31,7 +29,7 @@ import org.eclipse.jetty.util.MultiException;
  *
  * @author kimchy
  */
-public class SharedJettyHolder implements JettyHolder {
+public class SharedJettyHolder extends JettyHolder {
 
     private static final Log logger = LogFactory.getLog(SharedJettyHolder.class);
     private static final String SHARED_JETTY_KEY = "jetty.server";
@@ -53,33 +51,12 @@ public class SharedJettyHolder implements JettyHolder {
         }
     }
 
-    public void openConnectors() throws Exception {
-        Connector[] connectors = server.value().getConnectors();
-        for (Connector c : connectors) {
-            c.open();
-        }
-    }
-
-    public void closeConnectors() throws Exception {
-        Connector[] connectors = server.value().getConnectors();
-        MultiException ex = new MultiException();
-        for (Connector c : connectors) {
-            try {
-                c.close();
-            }
-            catch (Exception e) {
-                ex.add(e);
-            }
-        }
-        ex.ifExceptionThrowMulti();
-    }
-
     public void start() throws Exception {
         if (server.increment() == 1) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Starting jetty server [" + server + "]");
             }
-            server.value().start();
+            super.start();
         }
     }
 
@@ -88,8 +65,7 @@ public class SharedJettyHolder implements JettyHolder {
             if (logger.isDebugEnabled()) {
                 logger.debug("Stopping jetty server [" + server + "]");
             }
-            server.value().stop();
-            server.value().destroy();
+            super.stop();
             Singletons.remove(SHARED_JETTY_KEY);
         }
     }
