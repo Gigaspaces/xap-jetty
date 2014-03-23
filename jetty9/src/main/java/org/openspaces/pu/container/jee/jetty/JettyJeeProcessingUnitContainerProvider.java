@@ -16,7 +16,6 @@
 
 package org.openspaces.pu.container.jee.jetty;
 
-import com.gigaspaces.start.Locator;
 import com.j_spaces.kernel.ClassLoaderHelper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -32,11 +31,7 @@ import org.jini.rio.boot.CommonClassLoader;
 import org.jini.rio.boot.ServiceClassLoader;
 import org.jini.rio.boot.SharedServiceData;
 import org.openspaces.core.cluster.ClusterInfo;
-import org.openspaces.core.cluster.ClusterInfoBeanPostProcessor;
-import org.openspaces.core.cluster.ClusterInfoPropertyPlaceholderConfigurer;
 import org.openspaces.core.properties.BeanLevelProperties;
-import org.openspaces.core.properties.BeanLevelPropertyBeanPostProcessor;
-import org.openspaces.core.properties.BeanLevelPropertyPlaceholderConfigurer;
 import org.openspaces.pu.container.CannotCreateContainerException;
 import org.openspaces.pu.container.ProcessingUnitContainer;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
@@ -48,9 +43,7 @@ import org.openspaces.pu.container.support.ResourceApplicationContext;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
-import javax.management.MBeanServer;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
@@ -88,7 +81,7 @@ import java.util.*;
  *
  * @author kimchy
  */
-public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUnitContainerProvider {
+public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitContainerProvider {
 
     static {
         System.setProperty("org.eclipse.jetty.util.log.class", JavaUtilLog.class.getName());
@@ -122,20 +115,6 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
      * (JMX is disabled).
      */
     public static final String JETTY_JMX_PROP = "jetty.jmx";
-
-    private ApplicationContext parentContext;
-
-    private final List<Resource> configResources = new ArrayList<Resource>();
-
-    private BeanLevelProperties beanLevelProperties;
-
-    private ClusterInfo clusterInfo;
-
-    private ClassLoader classLoader;
-
-    private File deployPath;
-
-    private Iterable<URL> manifestURLs;
 
     private static final ThreadLocal<ApplicationContext> currentApplicationContext = new ThreadLocal<ApplicationContext>();
 
@@ -178,130 +157,29 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
         currentBeanLevelProperties.set(beanLevelProperties);
     }
 
-    /**
-     * Sets Spring parent {@link org.springframework.context.ApplicationContext} that will be used
-     * when constructing this processing unit application context.
-     */
-    public void setParentContext(ApplicationContext parentContext) {
-        this.parentContext = parentContext;
-    }
-
-    /**
-     * Sets the {@link org.openspaces.core.properties.BeanLevelProperties} that will be used to
-     * configure this processing unit. When constructing the container this provider will
-     * automatically add to the application context both
-     * {@link org.openspaces.core.properties.BeanLevelPropertyBeanPostProcessor} and
-     * {@link org.openspaces.core.properties.BeanLevelPropertyPlaceholderConfigurer} based on this
-     * bean level properties.
-     */
-    public void setBeanLevelProperties(BeanLevelProperties beanLevelProperties) {
-        this.beanLevelProperties = beanLevelProperties;
-    }
-
-    /**
-     * Sets the {@link org.openspaces.core.cluster.ClusterInfo} that will be used to configure this
-     * processing unit. When constructing the container this provider will automatically add to the
-     * application context the {@link org.openspaces.core.cluster.ClusterInfoBeanPostProcessor} in
-     * order to allow injection of cluster info into beans that implement
-     * {@link org.openspaces.core.cluster.ClusterInfoAware}.
-     */
-    public void setClusterInfo(ClusterInfo clusterInfo) {
-        this.clusterInfo = clusterInfo;
-    }
-
-    /**
-     * Sets the class loader this processing unit container will load the application context with.
-     */
-    public void setClassLoader(ClassLoader classLoader) {
-        this.classLoader = classLoader;
-    }
-
-    /**
-     * Sets jar file urls to be added to the web application class loader
-     */
-    public void setManifestUrls(Iterable<URL> manifestURLs) {
-        this.manifestURLs = manifestURLs;
-    }
-    
-    /**
-     * Adds a config location using Springs {@link org.springframework.core.io.Resource}
-     * abstraction. This config location represents a Spring xml context.
-     *
-     * <p>Note, once a config location is added that default location used when no config location is
-     * defined won't be used (the default location is <code>classpath*:/META-INF/spring/pu.xml</code>).
-     */
-    public void addConfigLocation(Resource resource) {
-        this.configResources.add(resource);
-    }
-
-    /**
-     * Adds a config location based on a String description using Springs
-     * {@link org.springframework.core.io.support.PathMatchingResourcePatternResolver}.
-     *
-     * @see org.springframework.core.io.support.PathMatchingResourcePatternResolver
-     */
-    public void addConfigLocation(String path) throws IOException {
-        Resource[] resources = new PathMatchingResourcePatternResolver().getResources(path);
-        for (Resource resource : resources) {
-            addConfigLocation(resource);
-        }
-    }
-
-    /**
-     * Sets the deploy path where the exploded war jetty will work with is located.
-     */
-    public void setDeployPath(File warPath) {
-        this.deployPath = warPath;
+    @Override
+    public String getJeeContainerType() {
+        return "jetty";
     }
 
     /**
      * See the header javadoc.
      */
     public ProcessingUnitContainer createContainer() throws CannotCreateContainerException {
-        Resource jettyPuResource = new ClassPathResource(DEFAULT_JETTY_PU);
-        if (!jettyPuResource.exists()) {
-            String instanceProp = beanLevelProperties.getContextProperties().getProperty(JETTY_INSTANCE_PROP, INSTANCE_PLAIN);
-            String defaultLocation = System.getProperty(JETTY_LOCATION_PREFIX_SYSPROP, INTERNAL_JETTY_PU_PREFIX) + instanceProp + ".pu.xml";
-            jettyPuResource = new ClassPathResource(defaultLocation);
-            if (!jettyPuResource.exists()) {
-                throw new CannotCreateContainerException("Failed to read internal pu file [" + defaultLocation + "] as well as user defined [" + DEFAULT_JETTY_PU + "]");
-            }
-            if (logger.isDebugEnabled()) {
-                logger.debug("Using internal bulit in jetty pu.xml from [" + defaultLocation + "]");
-            }
-        } else {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Using user specific jetty pu.xml from [" + DEFAULT_JETTY_PU + "]");
-            }
-        }
-        addConfigLocation(jettyPuResource);
+        addConfigLocation(getJettyPuResource());
 
-        if (clusterInfo != null) {
-            ClusterInfoParser.guessSchema(clusterInfo);
+        if (getClusterInfo() != null) {
+            ClusterInfoParser.guessSchema(getClusterInfo());
         }
 
-        Resource[] resources = configResources.toArray(new Resource[configResources.size()]);
-        // create the Spring application context
-        ResourceApplicationContext applicationContext = new ResourceApplicationContext(resources, parentContext);
-        // add config information if provided
-        if (beanLevelProperties != null) {
-            applicationContext.addBeanFactoryPostProcessor(new BeanLevelPropertyPlaceholderConfigurer(beanLevelProperties, clusterInfo));
-            applicationContext.addBeanPostProcessor(new BeanLevelPropertyBeanPostProcessor(beanLevelProperties));
-        }
-        if (clusterInfo != null) {
-            applicationContext.addBeanPostProcessor(new ClusterInfoBeanPostProcessor(clusterInfo));
-        }
-        applicationContext.addBeanFactoryPostProcessor(new ClusterInfoPropertyPlaceholderConfigurer(clusterInfo));
-        if (classLoader != null) {
-            applicationContext.setClassLoader(classLoader);
-        }
+        ResourceApplicationContext applicationContext = initApplicationContext();
 
         ClassLoader origClassLoader = Thread.currentThread().getContextClassLoader();
         JettyHolder jettyHolder = null;
         List<FreePortGenerator.PortHandle> portHandles = new ArrayList<FreePortGenerator.PortHandle>();
         try {
             try {
-                ClassLoaderHelper.setContextClassLoader(SharedServiceData.getJeeClassLoader("jetty"), true);
+                ClassLoaderHelper.setContextClassLoader(getJeeClassLoader(), true);
             } catch (Exception e) {
                 // ignore ...
             }
@@ -309,138 +187,21 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
             // "start" the application context
             applicationContext.refresh();
 
-            jettyHolder = (JettyHolder) applicationContext.getBean("jettyHolder");
+            jettyHolder = initJettyHolder(applicationContext, portHandles);
 
-            int retryPortCount = 20;
-            try {
-                retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
-            } catch (Exception e) {
-                // do nothing
-            }
+            initJettyJmx(jettyHolder);
 
-            FreePortGenerator freePortGenerator = new NoOpFreePortGenerator();
-            String freePortGeneratorSetting = beanLevelProperties.getContextProperties().getProperty("jetty.freePortGenerator", "file");
-            if ("file".equalsIgnoreCase(freePortGeneratorSetting)) {
-                freePortGenerator = new FileLockFreePortGenerator();
-            }
-
-            // only check ports if the server is not running already
-            if (!jettyHolder.getServer().isStarted()) {
-                boolean success = false;
-                for (int i = 0; i < retryPortCount; i++) {
-                    for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                        if (connector instanceof ServerConnector) {
-                            int port = ((ServerConnector)connector).getPort();
-                            if (port != 0) {
-                                FreePortGenerator.PortHandle portHandle = freePortGenerator.nextAvailablePort(port, retryPortCount);
-                                jettyHolder.updateConfidentialPort(port, portHandle.getPort());
-                                ((ServerConnector)connector).setPort(portHandle.getPort());
-                                portHandles.add(portHandle);
-                            }
-                        }
-                    }
-
-                    try {
-                        jettyHolder.openConnectors();
-                        success = true;
-                        break;
-                    } catch (BindException e) {
-                        for (FreePortGenerator.PortHandle portHandle : portHandles) {
-                            portHandle.release();
-                        }
-                        portHandles.clear();
-                        try {
-                            jettyHolder.closeConnectors();
-                        } catch (Exception e1) {
-                            logger.debug(e1);
-                            // ignore
-                        }
-                        for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                            if (connector instanceof ServerConnector) {
-                                int port = ((ServerConnector)connector).getPort();
-                                jettyHolder.updateConfidentialPort(port, port + 1);
-                                ((ServerConnector)connector).setPort(port + 1);
-                            }
-                        }
-                    } catch (Exception e) {
-                        for (FreePortGenerator.PortHandle portHandle : portHandles) {
-                            portHandle.release();
-                        }
-                        portHandles.clear();
-                        try {
-                            jettyHolder.closeConnectors();
-                        } catch (Exception e1) {
-                            logger.debug(e1);
-                            // ignore
-                        }
-                        if (e instanceof CannotCreateContainerException)
-                            throw (CannotCreateContainerException) e;
-                        throw new CannotCreateContainerException("Failed to start jetty server", e);
-                    }
-                }
-                if (!success) {
-                    throw new CannotCreateContainerException("Failed to bind jetty to port with retries [" + retryPortCount + "]");
-                }
-            }
-            for (Connector connector : jettyHolder.getServer().getConnectors()) {
-                if (connector instanceof NetworkConnector) {
-                    NetworkConnector networkConnector = (NetworkConnector) connector;
-                    logger.info("Using Jetty server connector [" + connector.getClass().getName() +
-                            "], Host [" + networkConnector.getHost() +
-                            "], Port [" + networkConnector.getPort() +
-                            "], Confidential Port [" + JettyHolder.getConfidentialPort(networkConnector)
-                            + "]");
-
-                }
-                else {
-                    logger.info("Using Jetty server connector [" + connector.getClass().getName() + "]");
-                }
-            }
-
-            try {
-                jettyHolder.start();
-            } catch (Exception e) {
+            String[] filesToResolve = new String[] {
+                    "WEB-INF/web.xml",
+                    "WEB-INF/jetty-web.xml",
+                    "WEB-INF/jetty6-web.xml",
+                    "WEB-INF/web-jetty.xml"};
+            for (String fileToResolve : filesToResolve) {
                 try {
-                    jettyHolder.stop();
-                } catch (Exception e1) {
-                    logger.debug(e1);
-                    // ignore
+                    BeanLevelPropertiesUtils.resolvePlaceholders(getBeanLevelProperties(), new File(getDeployPath(), fileToResolve));
+                } catch (IOException e) {
+                    throw new CannotCreateContainerException("Failed to resolve properties on " + fileToResolve, e);
                 }
-                if (e instanceof CannotCreateContainerException)
-                    throw (CannotCreateContainerException) e;
-                throw new CannotCreateContainerException("Failed to start jetty server", e);
-            }
-
-            String jmxEnabled = beanLevelProperties.getContextProperties().getProperty(JETTY_JMX_PROP, "false");
-            if ("true".equals(jmxEnabled)) {
-                MBeanContainer mBeanContainer = new MBeanContainer(ManagementFactory.getPlatformMBeanServer());
-                String domain = "gigaspaces.jetty";
-                if (!jettyHolder.isSingleInstance()) {
-                    domain += "." + clusterInfo.getName() + "." + clusterInfo.getRunningNumberOffset1();
-                }
-                mBeanContainer.setDomain(domain);
-                jettyHolder.getServer().addEventListener(mBeanContainer);
-            }
-
-            try {
-                BeanLevelPropertiesUtils.resolvePlaceholders(beanLevelProperties, new File(deployPath, "WEB-INF/web.xml"));
-            } catch (IOException e) {
-                throw new CannotCreateContainerException("Failed to resolve properties on WEB-INF/web.xml", e);
-            }
-            try {
-                BeanLevelPropertiesUtils.resolvePlaceholders(beanLevelProperties, new File(deployPath, "WEB-INF/jetty-web.xml"));
-            } catch (IOException e) {
-                throw new CannotCreateContainerException("Failed to resolve properties on WEB-INF/jetty-web.xml");
-            }
-            try {
-                BeanLevelPropertiesUtils.resolvePlaceholders(beanLevelProperties, new File(deployPath, "WEB-INF/jetty6-web.xml"));
-            } catch (IOException e) {
-                throw new CannotCreateContainerException("Failed to resolve properties on WEB-INF/jetty6-web.xml");
-            }
-            try {
-                BeanLevelPropertiesUtils.resolvePlaceholders(beanLevelProperties, new File(deployPath, "WEB-INF/web-jetty.xml"));
-            } catch (IOException e) {
-                throw new CannotCreateContainerException("Failed to resolve properties on WEB-INF/web-jetty.xml");
             }
         } finally {
             ClassLoaderHelper.setContextClassLoader(origClassLoader, true);
@@ -448,68 +209,13 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
 
         try {
             setCurrentApplicationContext(applicationContext);
-            setCurrentBeanLevelProperties(beanLevelProperties);
-            setCurrentClusterInfo(clusterInfo);
+            setCurrentBeanLevelProperties(getBeanLevelProperties());
+            setCurrentClusterInfo(getClusterInfo());
 
             // we disable the smart getUrl in the common class loader so the JSP classpath will be built correctly
             CommonClassLoader.getInstance().setDisableSmartGetUrl(true);
 
-            WebAppContext webAppContext = (WebAppContext) applicationContext.getBean("webAppContext");
-
-            webAppContext.setExtractWAR(true);
-
-            // allow aliases so load balancing will work on static content
-            if (!webAppContext.getInitParams().containsKey("org.eclipse.jetty.servlet.Default.aliases")) {
-                webAppContext.getInitParams().put("org.eclipse.jetty.servlet.Default.aliases", "true");
-            }
-            // when using file mapped buffers, jetty does not release the files when closing the web application
-            // resulting in not being able to deploy again the application (failure to write the file again)
-            if (!webAppContext.getInitParams().containsKey("org.eclipse.jetty.servlet.Default.useFileMappedBuffer")) {
-                webAppContext.getInitParams().put("org.eclipse.jetty.servlet.Default.useFileMappedBuffer", "false");
-            }
-
-            // by default, the web app context will delegate log4j and commons logging to the parent class loader
-            // allow to disable that
-            if (beanLevelProperties.getContextProperties().getProperty("com.gs.pu.jee.jetty.modifySystemClasses", "false").equalsIgnoreCase("true")) {
-                Set<String> systemClasses = new HashSet<String>(Arrays.asList(webAppContext.getSystemClasses()));
-                systemClasses.remove("org.apache.commons.logging.");
-                systemClasses.remove("org.apache.log4j.");
-                webAppContext.setSystemClasses(systemClasses.toArray(new String[systemClasses.size()]));
-            }
-            // don't hide server (jetty) classes from context, since we use it in the JettyWebApplicationContextListener
-            webAppContext.setServerClasses(new String[0]);
-
-            webAppContext.setDisplayName("web." + clusterInfo.getName() + "." + clusterInfo.getSuffix());
-            // Provide our own extension to jetty class loader, so we can get the name for it in our logging
-            ServiceClassLoader serviceClassLoader = (ServiceClassLoader) Thread.currentThread().getContextClassLoader();
-            JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(SharedServiceData.getJeeClassLoader("jetty"), webAppContext, serviceClassLoader.getLogName());
-
-            // add pu-common & web-pu-common jar files
-            String gsLibOpt = System.getProperty(Locator.GS_LIB_OPTIONAL);
-            String gsPuCommon = System.getProperty("com.gs.pu-common", gsLibOpt + "pu-common");
-            String gsWebPuCommon = System.getProperty("com.gs.web-pu-common", gsLibOpt + "web-pu-common");
-            webAppClassLoader.addJars(new FileResource(new File(gsPuCommon).toURL()));
-            webAppClassLoader.addJars(new FileResource(new File(gsWebPuCommon).toURL()));
-            if (manifestURLs != null) {
-                for (URL url : manifestURLs) {
-                    webAppClassLoader.addClassPath(new FileResource(url));
-                }
-            }
-            
-            webAppContext.setClassLoader(webAppClassLoader);
-            
-            final String SESSION_MANAGER_BEAN = "sessionManager";
-            if( applicationContext.containsBean( SESSION_MANAGER_BEAN ) ){
-            	SessionManager sessionManager = 
-            		( SessionManager )applicationContext.getBean( SESSION_MANAGER_BEAN );
-            	if( sessionManager != null ){
-            		SessionHandler sessionHandler = webAppContext.getSessionHandler();
-            		if( sessionHandler != null ){
-            			//fix for GS-10830 , CLOUDIFY-1797
-            			sessionHandler.setSessionManager( sessionManager );
-            		}
-            	}            
-            }
+            WebAppContext webAppContext = initWebAppContext(applicationContext);
 
             HandlerContainer container = jettyHolder.getServer();
 
@@ -574,5 +280,210 @@ public class JettyJeeProcessingUnitContainerProvider implements JeeProcessingUni
 
             CommonClassLoader.getInstance().setDisableSmartGetUrl(false);
         }
+    }
+
+    private Resource getJettyPuResource() {
+        Resource jettyPuResource = new ClassPathResource(DEFAULT_JETTY_PU);
+        if (!jettyPuResource.exists()) {
+            String instanceProp = getBeanLevelProperties().getContextProperties().getProperty(JETTY_INSTANCE_PROP, INSTANCE_PLAIN);
+            String defaultLocation = System.getProperty(JETTY_LOCATION_PREFIX_SYSPROP, INTERNAL_JETTY_PU_PREFIX) + instanceProp + ".pu.xml";
+            jettyPuResource = new ClassPathResource(defaultLocation);
+            if (!jettyPuResource.exists()) {
+                throw new CannotCreateContainerException("Failed to read internal pu file [" + defaultLocation + "] as well as user defined [" + DEFAULT_JETTY_PU + "]");
+            }
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using internal built in jetty pu.xml from [" + defaultLocation + "]");
+            }
+        } else {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using user specific jetty pu.xml from [" + DEFAULT_JETTY_PU + "]");
+            }
+        }
+
+        return jettyPuResource;
+    }
+
+    private JettyHolder initJettyHolder(ResourceApplicationContext applicationContext, List<FreePortGenerator.PortHandle> portHandles) {
+        JettyHolder jettyHolder = (JettyHolder) applicationContext.getBean("jettyHolder");
+
+        int retryPortCount = 20;
+        try {
+            retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
+        } catch (Exception e) {
+            // do nothing
+        }
+
+        FreePortGenerator freePortGenerator = new NoOpFreePortGenerator();
+        String freePortGeneratorSetting = getBeanLevelProperties().getContextProperties().getProperty("jetty.freePortGenerator", "file");
+        if ("file".equalsIgnoreCase(freePortGeneratorSetting)) {
+            freePortGenerator = new FileLockFreePortGenerator();
+        }
+
+        // only check ports if the server is not running already
+        if (!jettyHolder.getServer().isStarted()) {
+            boolean success = false;
+            for (int i = 0; i < retryPortCount; i++) {
+                for (Connector connector : jettyHolder.getServer().getConnectors()) {
+                    if (connector instanceof ServerConnector) {
+                        int port = ((ServerConnector) connector).getPort();
+                        if (port != 0) {
+                            FreePortGenerator.PortHandle portHandle = freePortGenerator.nextAvailablePort(port, retryPortCount);
+                            jettyHolder.updateConfidentialPort(port, portHandle.getPort());
+                            ((ServerConnector) connector).setPort(portHandle.getPort());
+                            portHandles.add(portHandle);
+                        }
+                    }
+                }
+
+                try {
+                    jettyHolder.openConnectors();
+                    success = true;
+                    break;
+                } catch (BindException e) {
+                    for (FreePortGenerator.PortHandle portHandle : portHandles) {
+                        portHandle.release();
+                    }
+                    portHandles.clear();
+                    try {
+                        jettyHolder.closeConnectors();
+                    } catch (Exception e1) {
+                        logger.debug(e1);
+                        // ignore
+                    }
+                    for (Connector connector : jettyHolder.getServer().getConnectors()) {
+                        if (connector instanceof ServerConnector) {
+                            int port = ((ServerConnector) connector).getPort();
+                            jettyHolder.updateConfidentialPort(port, port + 1);
+                            ((ServerConnector) connector).setPort(port + 1);
+                        }
+                    }
+                } catch (Exception e) {
+                    for (FreePortGenerator.PortHandle portHandle : portHandles) {
+                        portHandle.release();
+                    }
+                    portHandles.clear();
+                    try {
+                        jettyHolder.closeConnectors();
+                    } catch (Exception e1) {
+                        logger.debug(e1);
+                        // ignore
+                    }
+                    if (e instanceof CannotCreateContainerException)
+                        throw (CannotCreateContainerException) e;
+                    throw new CannotCreateContainerException("Failed to start jetty server", e);
+                }
+            }
+            if (!success) {
+                throw new CannotCreateContainerException("Failed to bind jetty to port with retries [" + retryPortCount + "]");
+            }
+        }
+        for (Connector connector : jettyHolder.getServer().getConnectors()) {
+            if (connector instanceof NetworkConnector) {
+                NetworkConnector networkConnector = (NetworkConnector) connector;
+                logger.info("Using Jetty server connector [" + connector.getClass().getName() +
+                        "], Host [" + networkConnector.getHost() +
+                        "], Port [" + networkConnector.getPort() +
+                        "], Confidential Port [" + JettyHolder.getConfidentialPort(networkConnector)
+                        + "]");
+
+            } else {
+                logger.info("Using Jetty server connector [" + connector.getClass().getName() + "]");
+            }
+        }
+
+        try {
+            jettyHolder.start();
+        } catch (Exception e) {
+            try {
+                jettyHolder.stop();
+            } catch (Exception e1) {
+                logger.debug(e1);
+                // ignore
+            }
+            if (e instanceof CannotCreateContainerException)
+                throw (CannotCreateContainerException) e;
+            throw new CannotCreateContainerException("Failed to start jetty server", e);
+        }
+
+        return jettyHolder;
+    }
+
+    private void initJettyJmx(JettyHolder jettyHolder) {
+        String jmxEnabled = getBeanLevelProperties().getContextProperties().getProperty(JETTY_JMX_PROP, "false");
+        if ("true".equals(jmxEnabled)) {
+            MBeanContainer mBeanContainer = new MBeanContainer(ManagementFactory.getPlatformMBeanServer());
+            String domain = "gigaspaces.jetty";
+            if (!jettyHolder.isSingleInstance()) {
+                domain += "." + getClusterInfo().getName() + "." + getClusterInfo().getRunningNumberOffset1();
+            }
+            mBeanContainer.setDomain(domain);
+            jettyHolder.getServer().addEventListener(mBeanContainer);
+        }
+    }
+
+    private WebAppContext initWebAppContext(ResourceApplicationContext applicationContext) throws Exception {
+        WebAppContext webAppContext = (WebAppContext) applicationContext.getBean("webAppContext");
+
+        webAppContext.setExtractWAR(true);
+
+        // allow aliases so load balancing will work on static content
+        if (!webAppContext.getInitParams().containsKey("org.eclipse.jetty.servlet.Default.aliases")) {
+            webAppContext.getInitParams().put("org.eclipse.jetty.servlet.Default.aliases", "true");
+        }
+        // when using file mapped buffers, jetty does not release the files when closing the web application
+        // resulting in not being able to deploy again the application (failure to write the file again)
+        if (!webAppContext.getInitParams().containsKey("org.eclipse.jetty.servlet.Default.useFileMappedBuffer")) {
+            webAppContext.getInitParams().put("org.eclipse.jetty.servlet.Default.useFileMappedBuffer", "false");
+        }
+
+        // by default, the web app context will delegate log4j and commons logging to the parent class loader
+        // allow to disable that
+        if (getBeanLevelProperties().getContextProperties().getProperty("com.gs.pu.jee.jetty.modifySystemClasses", "false").equalsIgnoreCase("true")) {
+            Set<String> systemClasses = new HashSet<String>(Arrays.asList(webAppContext.getSystemClasses()));
+            systemClasses.remove("org.apache.commons.logging.");
+            systemClasses.remove("org.apache.log4j.");
+            webAppContext.setSystemClasses(systemClasses.toArray(new String[systemClasses.size()]));
+        }
+        // don't hide server (jetty) classes from context, since we use it in the JettyWebApplicationContextListener
+        webAppContext.setServerClasses(new String[0]);
+
+        webAppContext.setDisplayName("web." + getClusterInfo().getName() + "." + getClusterInfo().getSuffix());
+        webAppContext.setClassLoader(initWebAppClassLoader(webAppContext));
+
+        final String SESSION_MANAGER_BEAN = "sessionManager";
+        if (applicationContext.containsBean(SESSION_MANAGER_BEAN)) {
+            SessionManager sessionManager =
+                    (SessionManager) applicationContext.getBean(SESSION_MANAGER_BEAN);
+            if (sessionManager != null) {
+                SessionHandler sessionHandler = webAppContext.getSessionHandler();
+                if (sessionHandler != null) {
+                    //fix for GS-10830 , CLOUDIFY-1797
+                    sessionHandler.setSessionManager(sessionManager);
+                }
+            }
+        }
+
+        return webAppContext;
+    }
+
+    private ClassLoader initWebAppClassLoader(WebAppContext webAppContext) throws Exception {
+        // Provide our own extension to jetty class loader, so we can get the name for it in our logging
+        ServiceClassLoader serviceClassLoader = (ServiceClassLoader) Thread.currentThread().getContextClassLoader();
+        JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(getJeeClassLoader(), webAppContext, serviceClassLoader.getLogName());
+
+        // add pu-common & web-pu-common jar files
+        for (String jar : super.getWebAppClassLoaderJars()) {
+            webAppClassLoader.addJars(new FileResource(new File(jar).toURL()));
+        }
+        for (String classpath : super.getWebAppClassLoaderClassPath()) {
+            webAppClassLoader.addClassPath(classpath);
+        }
+        if (getManifestURLs() != null) {
+            for (URL url : getManifestURLs()) {
+                webAppClassLoader.addClassPath(new FileResource(url));
+            }
+        }
+
+        return webAppClassLoader;
     }
 }

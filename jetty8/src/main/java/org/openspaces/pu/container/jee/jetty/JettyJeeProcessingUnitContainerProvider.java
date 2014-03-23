@@ -189,20 +189,6 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
             jettyHolder = initJettyHolder(applicationContext, portHandles);
 
-            try {
-                jettyHolder.start();
-            } catch (Exception e) {
-                try {
-                    jettyHolder.stop();
-                } catch (Exception e1) {
-                    logger.debug(e1);
-                    // ignore
-                }
-                if (e instanceof CannotCreateContainerException)
-                    throw (CannotCreateContainerException) e;
-                throw new CannotCreateContainerException("Failed to start jetty server", e);
-            }
-
             initJettyJmx(jettyHolder);
 
             String[] filesToResolve = new String[] {
@@ -306,7 +292,7 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
                 throw new CannotCreateContainerException("Failed to read internal pu file [" + defaultLocation + "] as well as user defined [" + DEFAULT_JETTY_PU + "]");
             }
             if (logger.isDebugEnabled()) {
-                logger.debug("Using internal bulit in jetty pu.xml from [" + defaultLocation + "]");
+                logger.debug("Using internal built in jetty pu.xml from [" + defaultLocation + "]");
             }
         } else {
             if (logger.isDebugEnabled()) {
@@ -403,6 +389,20 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
         }
         for (Connector connector : jettyHolder.getServer().getConnectors()) {
             logger.info("Using Jetty server connector [" + connector.getClass().getName() + "], Host [" + connector.getHost() + "], Port [" + connector.getPort() + "], Confidential Port [" + connector.getConfidentialPort() + "]");
+        }
+
+        try {
+            jettyHolder.start();
+        } catch (Exception e) {
+            try {
+                jettyHolder.stop();
+            } catch (Exception e1) {
+                logger.debug(e1);
+                // ignore
+            }
+            if (e instanceof CannotCreateContainerException)
+                throw (CannotCreateContainerException) e;
+            throw new CannotCreateContainerException("Failed to start jetty server", e);
         }
 
         return jettyHolder;
