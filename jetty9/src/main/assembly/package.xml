@@ -24,17 +24,15 @@
 				<exclude>tools/**/*.iml</exclude>
 				<exclude>tools/gshell/**</exclude>
 			</excludes>
-		</fileSet>
-		
-		
+		</fileSet>		
 		<fileSet>
 			<directory>${project.build.directory}</directory>
 			<outputDirectory>/lib/platform/openspaces</outputDirectory>
 			<includes>
-				<include>${project.artifactId}.jar</include>
+				<include>${project.artifactId}-9.jar</include>
 			</includes>
 		</fileSet>
-		<fileSet>
+		<!--fileSet>
 			<directory>${project.build.directory}/dependency</directory>
 			<outputDirectory>/lib/platform/jetty</outputDirectory>
 			<includes>
@@ -51,6 +49,6 @@
 			<excludes>
 				<exclude>jetty-all-*</exclude>
 			</excludes>
-		</fileSet>
+		</fileSet-->
 	</fileSets>
 </assembly>
