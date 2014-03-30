@@ -7,14 +7,15 @@
         <property name="properties">
             <props>
                 <prop key="web.context">/${clusterInfo.name}</prop>
-                <prop key="web.port">8080</prop>
-                <prop key="web.sslPort">8443</prop>
                 <prop key="web.context.classLoader.parentFirst">false</prop>
                 <prop key="web.context.copyWebDir">false</prop>
+                <prop key="web.port">8080</prop>
+                <prop key="web.sslPort">8443</prop>
                 <prop key="web.threadPool.minThreads">10</prop>
                 <prop key="web.threadPool.maxThreads">200</prop>
                 <prop key="web.selector.maxIdleTime">300000</prop>
                 <prop key="web.selector.acceptors">2</prop>
+                <prop key="web.selector.selectors">-1</prop>
                 <prop key="web.selector.lowResourcesConnections">20000</prop>
                 <prop key="web.selector.lowResourcesMaxIdleTime">5000</prop>
                 <prop key="web.selector.forwarded">true</prop>
@@ -73,7 +74,12 @@
         <property name="connectors">
             <list>
                 <bean class="org.eclipse.jetty.server.ServerConnector">
-                    <constructor-arg ref="jetty"/>
+                    <constructor-arg name="server" ref="jetty"/>
+                    <constructor-arg name="executor"><null/></constructor-arg>
+                    <constructor-arg name="scheduler"><null/></constructor-arg>
+                    <constructor-arg name="bufferPool"><null/></constructor-arg>
+                    <constructor-arg name="acceptors" value="${web.selector.acceptors}"/>
+                    <constructor-arg name="selectors" value="${web.selector.selectors}"/>
                     <constructor-arg name="factories">
                         <list>
                             <bean class="org.eclipse.jetty.server.HttpConnectionFactory">
@@ -87,7 +93,6 @@
                     </constructor-arg>
                     <property name="port" ref="port"/>
                     <property name="idleTimeout" value="${web.selector.maxIdleTime}"/>
-                    <property name="acceptors" value="${web.selector.acceptors}"/>
                     <!-- TODO: Review http://www.eclipse.org/jetty/documentation/current/statistics-handler.html
                     <property name="statsOn" value="${web.statsOn}"/>
                     -->
@@ -95,7 +100,9 @@
                     <property name="lowResourcesConnections" value="${web.selector.lowResourcesConnections}"/>
                     <property name="lowResourcesMaxIdleTime" value="${web.selector.lowResourcesMaxIdleTime}"/>
                     -->
+					<!-- TODO: Review http://www.eclipse.org/jetty/documentation/current/configuring-connectors.html#jetty-connectors-http-configuration
                     <property name="forwarded" value="${web.selector.forwarded}" />
+					-->
                 </bean>
             </list>
         </property>
