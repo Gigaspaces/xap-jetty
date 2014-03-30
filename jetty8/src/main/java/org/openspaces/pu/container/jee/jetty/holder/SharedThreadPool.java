@@ -16,6 +16,8 @@
 
 package org.openspaces.pu.container.jee.jetty.holder;
 
+import com.gigaspaces.internal.utils.SharedInstance;
+import com.gigaspaces.internal.utils.Singletons;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.util.component.LifeCycle;
@@ -30,101 +32,95 @@ import org.eclipse.jetty.util.thread.ThreadPool;
 public class SharedThreadPool implements ThreadPool, LifeCycle {
 
     private static final Log logger = LogFactory.getLog(SharedThreadPool.class);
+    private static final String SHARED_JETTY_KEY = "jetty.threadpool";
 
-    private static volatile ThreadPool threadPool;
+    private final SharedInstance<ThreadPool> threadPool;
 
-    private static volatile int threadPoolCount;
+    public SharedThreadPool(ThreadPool threadPool) {
+        SharedInstance<ThreadPool> newThreadPool = new SharedInstance<ThreadPool>(threadPool);
+        this.threadPool = (SharedInstance<ThreadPool>) Singletons.putIfAbsent(SHARED_JETTY_KEY, newThreadPool);
 
-    private static final Object threadPoolLock = new Object();
-
-    public SharedThreadPool(ThreadPool delegate) {
-        synchronized (threadPoolLock) {
-            if (threadPool == null) {
-                threadPool = delegate;
-                logger.debug("Using new thread pool [" + delegate + "]");
-            } else {
-                logger.debug("Using existing thread pool [" + threadPool + "]");
-            }
+        if (this.threadPool == newThreadPool) {
+            logger.debug("Using new thread pool [" + threadPool + "]");
+        } else {
+            logger.debug("Using existing thread pool [" + threadPool + "]");
         }
     }
 
+    @Override
     public boolean dispatch(Runnable runnable) {
-        return threadPool.dispatch(runnable);
+        return threadPool.value().dispatch(runnable);
     }
 
     public void join() throws InterruptedException {
-        threadPool.join();
+        threadPool.value().join();
     }
 
     public int getThreads() {
-        return threadPool.getThreads();
+        return threadPool.value().getThreads();
     }
 
     public int getIdleThreads() {
-        return threadPool.getIdleThreads();
+        return threadPool.value().getIdleThreads();
     }
 
     public boolean isLowOnThreads() {
-        return threadPool.isLowOnThreads();
+        return threadPool.value().isLowOnThreads();
     }
 
     public void start() throws Exception {
-        synchronized (threadPoolLock) {
-            // start the first one
-            if (++threadPoolCount == 1) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Starting thread pool [" + threadPool + "]");
-                }
-                ((LifeCycle) threadPool).start();
+        // start the first one
+        if (threadPool.increment() == 1) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Starting thread pool [" + threadPool + "]");
             }
+            ((LifeCycle) threadPool.value()).start();
         }
     }
 
     public void stop() throws Exception {
-        synchronized (threadPoolLock) {
-            // start the first one
-            if (--threadPoolCount == 0) {
-                if (logger.isDebugEnabled()) {
-                    logger.debug("Stopping thread pool [" + threadPool + "]");
-                }
-                ((LifeCycle) threadPool).stop();
+        // stop the last one
+        if (threadPool.decrement() == 0) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Stopping thread pool [" + threadPool + "]");
             }
+            ((LifeCycle) threadPool.value()).stop();
         }
     }
 
     public boolean isRunning() {
-        return ((LifeCycle) threadPool).isRunning();
+        return ((LifeCycle) threadPool.value()).isRunning();
     }
 
     public boolean isStarted() {
-        return ((LifeCycle) threadPool).isStarted();
+        return ((LifeCycle) threadPool.value()).isStarted();
     }
 
     public boolean isStarting() {
-        return ((LifeCycle) threadPool).isStarting();
+        return ((LifeCycle) threadPool.value()).isStarting();
     }
 
     public boolean isStopping() {
-        return ((LifeCycle) threadPool).isStopping();
+        return ((LifeCycle) threadPool.value()).isStopping();
     }
 
     public boolean isStopped() {
-        return ((LifeCycle) threadPool).isStopped();
+        return ((LifeCycle) threadPool.value()).isStopped();
     }
 
     public boolean isFailed() {
-        return ((LifeCycle) threadPool).isFailed();
+        return ((LifeCycle) threadPool.value()).isFailed();
     }
 
     public void addLifeCycleListener(Listener listener) {
-        ((LifeCycle) threadPool).addLifeCycleListener(listener);
+        ((LifeCycle) threadPool.value()).addLifeCycleListener(listener);
     }
 
     public void removeLifeCycleListener(Listener listener) {
-        ((LifeCycle) threadPool).removeLifeCycleListener(listener);
+        ((LifeCycle) threadPool.value()).removeLifeCycleListener(listener);
     }
 
     public String toString() {
-        return "Shared(" + threadPoolCount + ") [" + threadPool + "]";
+        return "Shared(" + threadPool.count() + ") [" + threadPool.value() + "]";
     }
 }
