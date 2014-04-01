@@ -121,6 +121,6 @@ public class SharedThreadPool implements ThreadPool, LifeCycle {
     }
 
     public String toString() {
-        return "Shared(" + /*threadPool.count() + */") [" + threadPool.value() + "]";
+        return "Shared(" + threadPool.count() + ") [" + threadPool.value() + "]";
     }
 }
