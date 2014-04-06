@@ -29,6 +29,7 @@ import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
 import org.eclipse.jetty.servlet.ServletHandler;
 import org.eclipse.jetty.util.LazyList;
+import org.eclipse.jetty.util.component.LifeCycle;
 import org.openspaces.core.GigaSpace;
 import org.openspaces.core.GigaSpaceConfigurer;
 import org.openspaces.core.cluster.ClusterInfo;
@@ -90,7 +91,10 @@ public class JettyWebApplicationContextListener implements ServletContextListene
     public static final String JETTY_SESSIONS_TIMEOUT = "jetty.sessions.timeout";
 
     public void contextInitialized(ServletContextEvent servletContextEvent) {
-        ServletContext servletContext = servletContextEvent.getServletContext();
+        final ServletContext servletContext = servletContextEvent.getServletContext();
+        // a hack to get the jetty context
+        final ServletContextHandler jettyContext = (ServletContextHandler) ((ContextHandler.Context) servletContext).getContextHandler();
+        final SessionHandler sessionHandler = jettyContext.getSessionHandler();
 
         BeanLevelProperties beanLevelProperties = (BeanLevelProperties) servletContext.getAttribute(JeeProcessingUnitContainerProvider.BEAN_LEVEL_PROPERTIES_CONTEXT);
         ClusterInfo clusterInfo = (ClusterInfo) servletContext.getAttribute(JeeProcessingUnitContainerProvider.CLUSTER_INFO_CONTEXT);
@@ -100,15 +104,8 @@ public class JettyWebApplicationContextListener implements ServletContextListene
             String sessionsSpaceUrl = beanLevelProperties.getContextProperties().getProperty(JETTY_SESSIONS_URL);
             if (sessionsSpaceUrl != null) {
                 logger.info("Jetty GigaSpaces Session support using space url [" + sessionsSpaceUrl + "]");
-                // a hack to get the jetty context
-                ServletContextHandler jettyContext = (ServletContextHandler) ((ContextHandler.Context) servletContext).getContextHandler();
-                SessionHandler sessionHandler = jettyContext.getSessionHandler();
 
-                try {
-                    sessionHandler.stop();
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to stop session handler to inject our own session manager", e);
-                }
+                stop(sessionHandler, "to inject a custom session manager");
 
                 GigaSessionManager gigaSessionManager = new GigaSessionManager();
                 if (sessionsSpaceUrl == null)
@@ -208,11 +205,7 @@ public class JettyWebApplicationContextListener implements ServletContextListene
 
                 sessionHandler.setSessionManager(gigaSessionManager);
 
-                try {
-                    sessionHandler.start();
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to start session handler to inject our own session manager", e);
-                }
+                start(sessionHandler, "to inject a custom session manager");
 
                 // HACK BARK CRACK
                 // It seems like when stopping and then starting a session handler, the outerScope of the ServletHandler (the
@@ -232,16 +225,16 @@ public class JettyWebApplicationContextListener implements ServletContextListene
             }
 
             // if we have a simple hash session id manager, set its worker name automatically...
-            ServletContextHandler jettyContext = (ServletContextHandler) ((ContextHandler.Context) servletContext).getContextHandler();
-            SessionHandler sessionHandler = jettyContext.getSessionHandler();
-            // automatically set the worker name
             if (sessionHandler.getSessionManager().getSessionIdManager() instanceof HashSessionIdManager) {
                 HashSessionIdManager sessionIdManager = (HashSessionIdManager) sessionHandler.getSessionManager().getSessionIdManager();
                 if (sessionIdManager.getWorkerName() == null) {
-                    sessionIdManager.setWorkerName(clusterInfo.getUniqueName().replace('.', '_'));
+                    final String workerName = clusterInfo.getUniqueName().replace('.', '_');
                     if (logger.isDebugEnabled()) {
-                        logger.debug("Automatically setting worker name to [" + sessionIdManager.getWorkerName() + "]");
+                        logger.debug("Automatically setting worker name to [" + workerName + "]");
                     }
+                    stop(sessionIdManager, "to set worker name");
+                    sessionIdManager.setWorkerName(workerName);
+                    start(sessionIdManager, "to set worker name");
                 }
             }
         }
@@ -249,5 +242,27 @@ public class JettyWebApplicationContextListener implements ServletContextListene
 
     public void contextDestroyed(ServletContextEvent servletContextEvent) {
 
+    }
+
+    private void stop(LifeCycle instance, String cause) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Stopping " + instance.toString() + " " + cause);
+        }
+        try {
+            instance.stop();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to stop " + instance.toString() + " " + cause, e);
+        }
+    }
+
+    private void start(LifeCycle instance, String cause) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Starting " + instance.toString() + " " + cause);
+        }
+        try {
+            instance.start();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to start " + instance.toString() + " " + cause, e);
+        }
     }
 }
