@@ -22,7 +22,6 @@ import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.jmx.MBeanContainer;
 import org.eclipse.jetty.server.*;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
-import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.util.log.JavaUtilLog;
 import org.eclipse.jetty.util.resource.FileResource;
@@ -36,7 +35,10 @@ import org.openspaces.pu.container.CannotCreateContainerException;
 import org.openspaces.pu.container.ProcessingUnitContainer;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
 import org.openspaces.pu.container.jee.jetty.holder.JettyHolder;
-import org.openspaces.pu.container.jee.jetty.support.*;
+import org.openspaces.pu.container.jee.jetty.support.FileLockFreePortGenerator;
+import org.openspaces.pu.container.jee.jetty.support.FreePortGenerator;
+import org.openspaces.pu.container.jee.jetty.support.JettyWebAppClassLoader;
+import org.openspaces.pu.container.jee.jetty.support.NoOpFreePortGenerator;
 import org.openspaces.pu.container.support.BeanLevelPropertiesUtils;
 import org.openspaces.pu.container.support.ClusterInfoParser;
 import org.openspaces.pu.container.support.ResourceApplicationContext;
@@ -54,24 +56,24 @@ import java.util.*;
 /**
  * An implementation of {@link org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider} that
  * can run web applications (war files) using Jetty.
- *
+ * <p/>
  * <p>The jetty xml configuration is loaded from {@link #DEFAULT_JETTY_PU} location if it exists. If
  * it does not exists, two defaults exists, one is the <code>jetty.plain.pu.xml</code> and the other
  * is <code>jetty.shared.xml</code>. By default, if nothing is passed, the <code>jetty.plain.xml<code>
  * is loaded.
- *
+ * <p/>
  * <p>The difference between plain and shared mode is only indicated by the built in jerry spring
  * application context. The plain mode starts a jetty instance per web application instance. The
  * shared mode uses the same jetty instance for all web applications. The default is plain mode
  * as it is usually the simpler and preferred way to use it.
- *
+ * <p/>
  * <p>The web application will be enabled automatically for OpenSpaces bootstrapping using
  * {@link org.openspaces.pu.container.jee.context.BootstrapWebApplicationContextListener}.
- *
+ * <p/>
  * <p>Post processing of the <code>web.xml</code> and <code>jetty-web.xml</code> is performed allowing
  * to use <code>${...}</code> notation within them (for example, using system properties, deployed
  * properties, or <code>${clusterInfo...}</code>).
- *
+ * <p/>
  * <p>JMX in jetty can be enabled by passing a deployment property {@link #JETTY_JMX_PROP}. If set
  * to <code>true</code> jetty will be configured with JMX. In plain mode, where there can be more
  * than one instance of jetty within the same JVM, the domain each instance will be registered under
@@ -81,6 +83,7 @@ import java.util.*;
  *
  * @author kimchy
  */
+@SuppressWarnings("UnusedDeclaration")
 public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitContainerProvider {
 
     static {
@@ -191,7 +194,7 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
             initJettyJmx(jettyHolder);
 
-            String[] filesToResolve = new String[] {
+            String[] filesToResolve = new String[]{
                     "WEB-INF/web.xml",
                     "WEB-INF/jetty-web.xml",
                     "WEB-INF/jetty6-web.xml",
@@ -224,19 +227,7 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
             if (contexts != null && contexts.length > 0) {
                 contextHandlerContainer = (ContextHandlerCollection) contexts[0];
             } else {
-                while (container != null) {
-                    if (container instanceof HandlerWrapper) {
-                        HandlerWrapper wrapper = (HandlerWrapper) container;
-                        Handler handler = wrapper.getHandler();
-                        if (handler == null)
-                            break;
-                        if (handler instanceof HandlerContainer)
-                            contextHandlerContainer = (ContextHandlerCollection) handler;
-                        else
-                            throw new IllegalStateException("No container");
-                    }
-                    throw new IllegalStateException("No container");
-                }
+                throw new IllegalStateException("No container");
             }
             contextHandlerContainer.addHandler(webAppContext);
 
@@ -253,6 +244,7 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
                     ClassLoaderHelper.setContextClassLoader(origClassLoader, true);
                 }
             }
+            //noinspection ThrowableResultOfMethodCallIgnored
             if (webAppContext.getUnavailableException() != null) {
                 throw new CannotCreateContainerException("Failed to start web app context", webAppContext.getUnavailableException());
             }
@@ -449,7 +441,6 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
         webAppContext.setDisplayName("web." + getClusterInfo().getName() + "." + getClusterInfo().getSuffix());
         webAppContext.setClassLoader(initWebAppClassLoader(webAppContext));
-
         final String SESSION_MANAGER_BEAN = "sessionManager";
         if (applicationContext.containsBean(SESSION_MANAGER_BEAN)) {
             SessionManager sessionManager =
@@ -458,11 +449,16 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
                 SessionHandler sessionHandler = webAppContext.getSessionHandler();
                 if (sessionHandler != null) {
                     //fix for GS-10830 , CLOUDIFY-1797
-                    sessionHandler.setSessionManager(sessionManager);
+                    sessionHandler.setSessionManager(new GSLazySessionManager(sessionManager));
                 }
             }
+        } else {
+            SessionHandler sessionHandler = webAppContext.getSessionHandler();
+            if (sessionHandler != null) {
+                //fix for GS-10830 , CLOUDIFY-1797
+                sessionHandler.setSessionManager(new GSLazySessionManager());
+            }
         }
-
         return webAppContext;
     }
 
@@ -473,6 +469,7 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
         // add pu-common & web-pu-common jar files
         for (String jar : super.getWebAppClassLoaderJars()) {
+            //noinspection deprecation
             webAppClassLoader.addJars(new FileResource(new File(jar).toURL()));
         }
         for (String classpath : super.getWebAppClassLoaderClassPath()) {

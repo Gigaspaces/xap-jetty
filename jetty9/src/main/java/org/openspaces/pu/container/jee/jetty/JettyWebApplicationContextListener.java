@@ -1,19 +1,19 @@
 /*******************************************************************************
- * 
+ *
  * Copyright (c) 2012 GigaSpaces Technologies Ltd. All rights reserved
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *       http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *  
+ *
  ******************************************************************************/
 package org.openspaces.pu.container.jee.jetty;
 
@@ -22,12 +22,10 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.SessionManager;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.handler.ScopedHandler;
 import org.eclipse.jetty.server.session.AbstractSessionManager;
 import org.eclipse.jetty.server.session.HashSessionIdManager;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHandler;
 import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.openspaces.core.GigaSpace;
@@ -35,10 +33,12 @@ import org.openspaces.core.GigaSpaceConfigurer;
 import org.openspaces.core.cluster.ClusterInfo;
 import org.openspaces.core.properties.BeanLevelProperties;
 import org.openspaces.core.space.UrlSpaceConfigurer;
+import org.openspaces.core.util.ClassLoaderUtils;
 import org.openspaces.jee.sessions.jetty.GigaSessionIdManager;
 import org.openspaces.jee.sessions.jetty.GigaSessionManager;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
 import org.springframework.context.ApplicationContext;
+import org.springframework.util.ReflectionUtils;
 
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
@@ -46,6 +46,7 @@ import javax.servlet.ServletContextListener;
 import javax.servlet.http.HttpSessionAttributeListener;
 import javax.servlet.http.HttpSessionListener;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 /**
  * An jetty specific {@link javax.servlet.ServletContextListener} that is automatically loaded by the
@@ -95,7 +96,6 @@ public class JettyWebApplicationContextListener implements ServletContextListene
         // a hack to get the jetty context
         final ServletContextHandler jettyContext = (ServletContextHandler) ((ContextHandler.Context) servletContext).getContextHandler();
         final SessionHandler sessionHandler = jettyContext.getSessionHandler();
-
         BeanLevelProperties beanLevelProperties = (BeanLevelProperties) servletContext.getAttribute(JeeProcessingUnitContainerProvider.BEAN_LEVEL_PROPERTIES_CONTEXT);
         ClusterInfo clusterInfo = (ClusterInfo) servletContext.getAttribute(JeeProcessingUnitContainerProvider.CLUSTER_INFO_CONTEXT);
         if (beanLevelProperties != null) {
@@ -104,12 +104,7 @@ public class JettyWebApplicationContextListener implements ServletContextListene
             String sessionsSpaceUrl = beanLevelProperties.getContextProperties().getProperty(JETTY_SESSIONS_URL);
             if (sessionsSpaceUrl != null) {
                 logger.info("Jetty GigaSpaces Session support using space url [" + sessionsSpaceUrl + "]");
-
-                stop(sessionHandler, "to inject a custom session manager");
-
                 GigaSessionManager gigaSessionManager = new GigaSessionManager();
-                if (sessionsSpaceUrl == null)
-                    throw new IllegalStateException("No url for space");
 
                 if (sessionsSpaceUrl.startsWith("bean://")) {
                     ApplicationContext applicationContext = (ApplicationContext) servletContext.getAttribute(JeeProcessingUnitContainerProvider.APPLICATION_CONTEXT_CONTEXT);
@@ -161,10 +156,10 @@ public class JettyWebApplicationContextListener implements ServletContextListene
                 gigaSessionManager.setUsingCookies(sessionManager.isUsingCookies());
                 gigaSessionManager.getSessionCookieConfig().setMaxAge(sessionManager.getSessionCookieConfig().getMaxAge());
                 gigaSessionManager.getSessionCookieConfig().setSecure(sessionManager.getSessionCookieConfig().isSecure());
-                gigaSessionManager.setMaxInactiveInterval(sessionManager.getMaxInactiveInterval());                
+                gigaSessionManager.setMaxInactiveInterval(sessionManager.getMaxInactiveInterval());
                 gigaSessionManager.setHttpOnly(sessionManager.getHttpOnly());
-                gigaSessionManager.getSessionCookieConfig().setComment(sessionManager.getSessionCookieConfig().getComment());               
-                
+                gigaSessionManager.getSessionCookieConfig().setComment(sessionManager.getSessionCookieConfig().getComment());
+
                 String sessionTimeout = beanLevelProperties.getContextProperties().getProperty(JETTY_SESSIONS_TIMEOUT);
                 if (sessionTimeout != null) {
                     gigaSessionManager.setMaxInactiveInterval(Integer.parseInt(sessionTimeout) * 60);
@@ -176,52 +171,21 @@ public class JettyWebApplicationContextListener implements ServletContextListene
                 GigaSessionIdManager sessionIdManager = new GigaSessionIdManager(jettyContext.getServer());
                 sessionIdManager.setWorkerName(clusterInfo.getUniqueName().replace('.', '_'));
                 gigaSessionManager.setIdManager(sessionIdManager);
-
-                // copy over the session listeners
-                try {
-                    Field field = AbstractSessionManager.class.getDeclaredField("_sessionAttributeListeners");
-                    field.setAccessible(true);
-                    Object sessionAttributeListeners = field.get(sessionHandler.getSessionManager());
-                    if (sessionAttributeListeners != null) {
-                        for (int i = 0; i < LazyList.size(sessionAttributeListeners); i++) {
-                            gigaSessionManager.addEventListener((HttpSessionAttributeListener) LazyList.get(sessionAttributeListeners, i));
+                // replace the actual session manager inside the LazySessionManager with GS session manager, this is
+                // because in Jetty 9 it no more possible to replace the session manager after the server started
+                // without deleting all webapps.
+                if ("GSLazySessionManager".equals(sessionManager.getClass().getSimpleName())) {
+                    try {
+                        Method method = ReflectionUtils.findMethod(sessionManager.getClass(), "replaceDefault", SessionManager.class);
+                        if (method != null) {
+                            ReflectionUtils.invokeMethod(method, sessionManager, gigaSessionManager);
+                        } else {
+                            throw new NoSuchMethodException("replaceDefault");
                         }
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to replace default session manager with GSSessionManager", e);
                     }
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to copy over _sessionAttributeListeners", e);
                 }
-                try {
-                    Field field = AbstractSessionManager.class.getDeclaredField("_sessionListeners");
-                    field.setAccessible(true);
-                    Object sessionListeners = field.get(sessionHandler.getSessionManager());
-                    if (sessionListeners != null) {
-                        for (int i = 0; i < LazyList.size(sessionListeners); i++) {
-                            gigaSessionManager.addEventListener((HttpSessionListener) LazyList.get(sessionListeners, i));
-                        }
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to copy over _sessionListeners", e);
-                }
-
-                sessionHandler.setSessionManager(gigaSessionManager);
-
-                start(sessionHandler, "to inject a custom session manager");
-
-                // HACK BARK CRACK
-                // It seems like when stopping and then starting a session handler, the outerScope of the ServletHandler (the
-                // next scope after the web context) gets nulled, meaning that the handle won't be called, resulting in
-                // the session handler not being called at all.
-                // For now, set it explicitly using reflection until I figure out with jetty guys what can be done to
-                // fix this.
-                try {
-                    ServletHandler servletHandler = (ServletHandler) sessionHandler.getChildHandlerByClass(ServletHandler.class);
-                    Field outerScopeField = ScopedHandler.class.getDeclaredField("_outerScope");
-                    outerScopeField.setAccessible(true);
-                    outerScopeField.set(servletHandler, jettyContext);
-                } catch (Exception e) {
-                    throw new RuntimeException("Failed to set outer scope on ServletHandler (workaround jetty bug)", e);
-                }
-
             }
 
             // if we have a simple hash session id manager, set its worker name automatically...
