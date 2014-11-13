@@ -4,12 +4,19 @@ import junit.framework.Assert;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.server.session.SessionHandler;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.openspaces.core.GigaSpace;
 import org.openspaces.jee.sessions.jetty.GigaSessionIdManager;
 import org.openspaces.jee.sessions.jetty.GigaSessionManager;
 import org.openspaces.jee.sessions.jetty.SessionData;
-import org.springframework.test.AbstractDependencyInjectionSpringContextTests;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 
+import javax.annotation.Resource;
 import javax.servlet.*;
 import javax.servlet.http.*;
 import java.io.BufferedReader;
@@ -23,8 +30,11 @@ import java.util.Enumeration;
 import java.util.Locale;
 import java.util.Map;
 
-public class JettySessionManagerTests extends AbstractDependencyInjectionSpringContextTests {
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration("classpath:/org/openspaces/itest/session/jetty/space-context.xml")
+public class JettySessionManagerTests  {
 
+    @Resource
     protected GigaSpace gigaSpace;
     protected GigaSessionManager sessionManager;
     protected GigaSessionIdManager idManager;
@@ -33,17 +43,12 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
     private TestHttpRequest request;
     private static HttpSession session;
 
-    public JettySessionManagerTests() {
-        setPopulateProtectedVariables(true);
-    }
-
-    @Override
-    protected String[] getConfigLocations() {
-        return new String[]{"/org/openspaces/itest/session/jetty/space-context.xml"};
+    public JettySessionManagerTests(){
     }
 
 
-    protected void onSetUp() throws Exception {
+    @Before
+    public void onSetUp() throws Exception {
         server = new Server();
         idManager = new GigaSessionIdManager(server);
         sessionManager = new GigaSessionManager();
@@ -64,7 +69,8 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
 
     }
 
-    protected void onTearDown() throws Exception {
+    @After
+    public void onTearDown() throws Exception {
         session = null;
         sessionManager.stop();
         idManager.stop();
@@ -72,6 +78,7 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         gigaSpace.clear(null);
     }
 
+    @Test
     public void testSetAttribute() throws Exception {
         session = sessionManager.newHttpSession(request);
         session.setAttribute("foo", 1);
@@ -80,7 +87,8 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         Assert.assertEquals(getAttributeMap(session).get("foo"), 1);
         Assert.assertEquals(getAttributeMap(session).size(), 1);
     }
-    
+
+    @Test
     public void testExpirationTime(){
         session = sessionManager.newHttpSession(request);
         session.setAttribute("foo", 2);
@@ -88,8 +96,8 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         long timeToLive = session.getExpiryTime() - session.getCreated();
         Assert.assertTrue("TimeToLive=" + timeToLive + " MaxIdleMs=" + session.getMaxIdleMs(), Math.abs(timeToLive - session.getMaxIdleMs()) < 50); 
     }
-
-    public void testSetNullAttribute() throws Exception {
+    @Test
+     public void testSetNullAttribute() throws Exception {
         session = sessionManager.newHttpSession(request);
         session.setAttribute("foo", null);
 
@@ -98,6 +106,7 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         Assert.assertEquals(getAttributeMap(sessionData).size(), 0);
     }
 
+    @Test
     public void testGetNullAttribute() throws Exception {
         session = sessionManager.newHttpSession(request);
         session.setAttribute("foo", 11);
@@ -109,6 +118,7 @@ public class JettySessionManagerTests extends AbstractDependencyInjectionSpringC
         Assert.assertEquals(getAttributeMap(sessionData).size(), 1);
     }
 
+    @Test
     public void testGetAttribute() throws Exception {
         session = sessionManager.newHttpSession(request);
         session.setAttribute("bar", 2);
