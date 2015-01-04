@@ -22,18 +22,15 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.SessionManager;
 import org.eclipse.jetty.server.handler.ContextHandler;
-import org.eclipse.jetty.server.session.AbstractSessionManager;
 import org.eclipse.jetty.server.session.HashSessionIdManager;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.util.LazyList;
 import org.eclipse.jetty.util.component.LifeCycle;
 import org.openspaces.core.GigaSpace;
 import org.openspaces.core.GigaSpaceConfigurer;
 import org.openspaces.core.cluster.ClusterInfo;
 import org.openspaces.core.properties.BeanLevelProperties;
 import org.openspaces.core.space.UrlSpaceConfigurer;
-import org.openspaces.core.util.ClassLoaderUtils;
 import org.openspaces.jee.sessions.jetty.GigaSessionIdManager;
 import org.openspaces.jee.sessions.jetty.GigaSessionManager;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
@@ -43,9 +40,6 @@ import org.springframework.util.ReflectionUtils;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
-import javax.servlet.http.HttpSessionAttributeListener;
-import javax.servlet.http.HttpSessionListener;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
