@@ -36,6 +36,10 @@ public class JettyLauncher extends WebLauncher {
         Server server = new Server();
         SelectChannelConnector connector = new SelectChannelConnector();
         connector.setReuseAddress( false );
+        //GS-12102, fix for 10.1, added possibility to define host address
+        if( config.getHostAddress() != null ){
+            connector.setHost( config.getHostAddress() );
+        }
         connector.setPort( config.getPort() );
         server.setConnectors( new Connector[]{ connector } );
 
