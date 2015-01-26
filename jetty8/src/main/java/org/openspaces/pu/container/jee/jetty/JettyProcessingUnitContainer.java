@@ -42,7 +42,7 @@ import java.util.List;
  *
  * @author kimchy
  */
-public class JettyProcessingUnitContainer implements org.openspaces.pu.container.jee.JeeProcessingUnitContainer {
+public class JettyProcessingUnitContainer extends org.openspaces.pu.container.jee.JeeProcessingUnitContainer {
 
     private static final Log logger = LogFactory.getLog(JettyProcessingUnitContainer.class);
 
@@ -107,6 +107,7 @@ public class JettyProcessingUnitContainer implements org.openspaces.pu.container
     /**
      * Closes the processing unit container by destroying the web application and the Spring application context.
      */
+    @Override
     public void close() throws CannotCloseContainerException {
 
         for (FreePortGenerator.PortHandle portHandle : portHandels) {
@@ -139,6 +140,8 @@ public class JettyProcessingUnitContainer implements org.openspaces.pu.container
         } catch (Exception e) {
             logger.warn("Failed to stop jetty server", e);
         }
+
+        super.close();
     }
 
 }
