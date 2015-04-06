@@ -474,8 +474,12 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
     private JettyWebAppClassLoader initWebAppClassLoader(WebAppContext webAppContext) throws Exception {
         // Provide our own extension to jetty class loader, so we can get the name for it in our logging
-        ServiceClassLoader serviceClassLoader = (ServiceClassLoader) Thread.currentThread().getContextClassLoader();
-        JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(getJeeClassLoader(), webAppContext, serviceClassLoader.getLogName());
+        String logName = "JettyJEEProcessingUnitContainer";
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        if(cl instanceof ServiceClassLoader){
+            logName = ((ServiceClassLoader)cl).getLogName();
+        }
+        JettyWebAppClassLoader webAppClassLoader = new JettyWebAppClassLoader(getJeeClassLoader(), webAppContext, logName);
 
         // add pu-common & web-pu-common jar files
         for (String jar : super.getWebAppClassLoaderJars()) {
