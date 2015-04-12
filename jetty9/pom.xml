@@ -8,6 +8,7 @@
 	<properties>
         <jettyVersion>9.1.2.v20140210</jettyVersion>
 		<gsVersion>${project.version}</gsVersion>
+		<junitVersion>4.11</junitVersion>
 	</properties>
 
 	<repositories>		
@@ -228,6 +229,13 @@
             <version>${jettyVersion}</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junitVersion}</version>
+            <scope>test</scope>
+        </dependency>
+
 	</dependencies>
 	<build>
 		<extensions>
