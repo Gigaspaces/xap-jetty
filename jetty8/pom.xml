@@ -7,7 +7,8 @@
 
 	<properties>
 		<jettyVersion>8.1.8.v20121106</jettyVersion>
-		<gsVersion>${project.version}</gsVersion>		
+		<gsVersion>${project.version}</gsVersion>
+        <junitVersion>4.11</junitVersion>
 	</properties>
 
 	<repositories>		
@@ -251,8 +252,14 @@
 			<artifactId>jetty-security</artifactId>
 			<version>${jettyVersion}</version>
 			<scope>provided</scope>
-		</dependency>		
-	</dependencies>
+		</dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <version>${junitVersion}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 	<build>
 		<extensions>
 			<extension>
