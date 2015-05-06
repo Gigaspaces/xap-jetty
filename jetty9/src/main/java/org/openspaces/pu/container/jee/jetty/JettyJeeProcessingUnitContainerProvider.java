@@ -299,10 +299,24 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
         JettyHolder jettyHolder = (JettyHolder) applicationContext.getBean("jettyHolder");
 
         int retryPortCount = 20;
-        try {
-            retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
-        } catch (Exception e) {
-            // do nothing
+        //added by Evgeny in order to allow to deploy more than one gs-webui on the same machine, tests do it,GS-12393
+        String retryPortCountProperty = System.getProperty("com.gs.retryPortCount");
+        if( retryPortCountProperty != null ) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using system property [com.gs.retryPortCount]:" + retryPortCountProperty );
+            }
+            try {
+                retryPortCount = Integer.parseInt( retryPortCountProperty );
+            } catch (Exception e) {
+                // do nothing
+            }
+        }
+        else {
+            try {
+                retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
+            } catch (Exception e) {
+                // do nothing
+            }
         }
 
         FreePortGenerator freePortGenerator = new NoOpFreePortGenerator();

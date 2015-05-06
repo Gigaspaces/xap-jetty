@@ -20,7 +20,11 @@ import com.j_spaces.kernel.ClassLoaderHelper;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.jmx.MBeanContainer;
-import org.eclipse.jetty.server.*;
+import org.eclipse.jetty.server.AbstractConnector;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.HandlerContainer;
+import org.eclipse.jetty.server.SessionManager;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.server.handler.HandlerWrapper;
 import org.eclipse.jetty.server.session.SessionHandler;
@@ -35,7 +39,10 @@ import org.openspaces.pu.container.CannotCreateContainerException;
 import org.openspaces.pu.container.ProcessingUnitContainer;
 import org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider;
 import org.openspaces.pu.container.jee.jetty.holder.JettyHolder;
-import org.openspaces.pu.container.jee.jetty.support.*;
+import org.openspaces.pu.container.jee.jetty.support.FileLockFreePortGenerator;
+import org.openspaces.pu.container.jee.jetty.support.FreePortGenerator;
+import org.openspaces.pu.container.jee.jetty.support.JettyWebAppClassLoader;
+import org.openspaces.pu.container.jee.jetty.support.NoOpFreePortGenerator;
 import org.openspaces.pu.container.support.BeanLevelPropertiesUtils;
 import org.openspaces.pu.container.support.ClusterInfoParser;
 import org.openspaces.pu.container.support.ResourceApplicationContext;
@@ -49,7 +56,11 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.BindException;
 import java.net.URL;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * An implementation of {@link org.openspaces.pu.container.jee.JeeProcessingUnitContainerProvider} that
@@ -307,10 +318,24 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
         JettyHolder jettyHolder = (JettyHolder) applicationContext.getBean("jettyHolder");
 
         int retryPortCount = 20;
-        try {
-            retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
-        } catch (Exception e) {
-            // do nothing
+        //added by Evgeny in order to allow to deploy more than one gs-webui on the same machine, tests do it,GS-12393
+        String retryPortCountProperty = System.getProperty("com.gs.retryPortCount");
+        if( retryPortCountProperty != null ) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Using system property [com.gs.retryPortCount]:" + retryPortCountProperty );
+            }
+            try {
+                retryPortCount = Integer.parseInt( retryPortCountProperty );
+            } catch (Exception e) {
+                // do nothing
+            }
+        }
+        else {
+            try {
+                retryPortCount = (Integer) applicationContext.getBean("retryPortCount");
+            } catch (Exception e) {
+                // do nothing
+            }
         }
 
         FreePortGenerator freePortGenerator = new NoOpFreePortGenerator();
