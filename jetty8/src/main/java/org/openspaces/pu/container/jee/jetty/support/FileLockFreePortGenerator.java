@@ -64,6 +64,9 @@ public class FileLockFreePortGenerator implements FreePortGenerator {
                 continue;
             }
             try {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Trying to lock file [" + portF.getAbsolutePath() + "]");
+                }
                 portFileLock = portFile.getChannel().tryLock();
                 if (portFileLock == null) {
                     if (logger.isDebugEnabled()) {
@@ -128,6 +131,9 @@ public class FileLockFreePortGenerator implements FreePortGenerator {
 
         public void release() {
             try {
+                if (logger.isDebugEnabled()) {
+                    logger.debug("Releasing port [" + portNumber +"]");
+                }
                 portFileLock.release();
             } catch (IOException e) {
                 logger.debug("Failed to release port file lock for port [" + portNumber + "]", e);
