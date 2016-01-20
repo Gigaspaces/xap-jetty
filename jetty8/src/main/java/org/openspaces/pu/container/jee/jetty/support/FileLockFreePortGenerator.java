@@ -17,6 +17,7 @@
  ******************************************************************************/
 package org.openspaces.pu.container.jee.jetty.support;
 
+import com.gigaspaces.start.SystemInfo;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -26,8 +27,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
-
-import com.j_spaces.kernel.Environment;
 
 /**
  * A free port generator that uses file locks in order to obtain a port. Aimed at trying to fix the problem
@@ -42,7 +41,7 @@ public class FileLockFreePortGenerator implements FreePortGenerator {
     private static final File portDirectory;
 
     static {
-        File jettyWork = new File(System.getProperty("com.gs.work", Environment.getHomeDirectory() + "/work") + "/jetty");
+        File jettyWork = new File(SystemInfo.singleton().locations().work() + "/jetty");
         portDirectory = new File(jettyWork, "ports");
         portDirectory.mkdirs();
     }
