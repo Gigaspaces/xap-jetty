@@ -6,7 +6,7 @@
 	<version>11.0.0-SNAPSHOT</version>
 
 	<properties>
-        <jettyVersion>9.1.2.v20140210</jettyVersion>
+        	<jettyVersion>9.1.2.v20140210</jettyVersion>
 		<gsVersion>${project.version}</gsVersion>
 		<junitVersion>4.11</junitVersion>
 	</properties>
