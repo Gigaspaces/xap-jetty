@@ -16,11 +16,11 @@
 
 package org.openspaces.pu.container.jee.jetty;
 
+import com.gigaspaces.start.SystemInfo;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.handler.ContextHandlerCollection;
 import org.eclipse.jetty.webapp.WebAppContext;
-import org.jini.rio.boot.BootUtil;
 import org.openspaces.pu.container.CannotCloseContainerException;
 import org.openspaces.pu.container.jee.JeeServiceDetails;
 import org.openspaces.pu.container.jee.JeeType;
@@ -32,7 +32,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.web.context.ContextLoader;
 
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.util.List;
 
 /**
@@ -86,13 +85,9 @@ public class JettyProcessingUnitContainer extends org.openspaces.pu.container.je
     public JeeServiceDetails getJeeDetails() {
         int port = jettyHolder.getServer().getConnectors()[0].getPort();
         String host = jettyHolder.getServer().getConnectors()[0].getHost();
-        if (host == null) {
-            try {
-                host = BootUtil.getHostAddress();
-            } catch (UnknownHostException e) {
-                logger.warn("Unknown host exception", e);
-            }
-        }
+        if (host == null)
+            host = SystemInfo.singleton().network().getHostId();
+
         InetSocketAddress addr = host == null ? new InetSocketAddress(port) : new InetSocketAddress(host, port);
         JeeServiceDetails details = new JeeServiceDetails(addr.getAddress().getHostAddress(),
                 port,

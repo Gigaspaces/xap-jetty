@@ -16,6 +16,7 @@
 
 package org.openspaces.pu.container.jee.jetty;
 
+import com.gigaspaces.start.SystemInfo;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.Connector;
@@ -96,13 +97,8 @@ public class JettyProcessingUnitContainer extends org.openspaces.pu.container.je
             port = networkConnector.getPort();
             sslPort = JettyHolder.getConfidentialPort(connector);
             String host = networkConnector.getHost();
-            if (host == null) {
-                try {
-                    host = BootUtil.getHostAddress();
-                } catch (UnknownHostException e) {
-                    logger.warn("Unknown host exception", e);
-                }
-            }
+            if (host == null)
+                host = SystemInfo.singleton().network().getHostId();
             InetSocketAddress addr = host == null ? new InetSocketAddress(port) : new InetSocketAddress(host, port);
             hostAddress = addr.getAddress().getHostAddress();
 
