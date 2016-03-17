@@ -49,7 +49,7 @@
                 <value>org.eclipse.jetty.plus.webapp.EnvConfiguration</value>
                 <value>org.eclipse.jetty.plus.webapp.PlusConfiguration</value>
                 <value>org.eclipse.jetty.webapp.JettyWebXmlConfiguration</value>
-                <value>org.eclipse.jetty.webapp.TagLibConfiguration</value>
+                <value>org.eclipse.jetty.annotations.AnnotationConfiguration</value>
             </list>
         </property>
     </bean>
