@@ -17,6 +17,8 @@
  ******************************************************************************/
 package org.openspaces.launcher;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.SessionManager;
@@ -30,6 +32,8 @@ import java.io.File;
  * @since 10.0.0
  */
 public class JettyLauncher extends WebLauncher {
+
+    private static final Log logger = LogFactory.getLog(JettyLauncher.class);
 
     @Override
     public void launch(WebLauncherConfig config) throws Exception {
@@ -48,6 +52,15 @@ public class JettyLauncher extends WebLauncher {
         webAppContext.setWar(config.getWarFilePath());
         File tempDir = new File(config.getTempDirPath());
         tempDir.mkdirs();
+
+
+        boolean canRead = tempDir.canRead();
+        boolean canWrite = tempDir.canWrite();
+        boolean canExecute = tempDir.canExecute();
+
+        //TODO remove it
+        logger.info("Temp dir:" + tempDir.getName() + ", canRead=" + canRead + ", canWrite=" + canWrite + ", canExecute=" + canExecute + ", exists=" + tempDir.exists() );
+
         webAppContext.setTempDirectory(tempDir);
         webAppContext.setCopyWebDir(false);
         webAppContext.setParentLoaderPriority(true);
