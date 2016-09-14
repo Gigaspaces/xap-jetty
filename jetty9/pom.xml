@@ -3,7 +3,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.gigaspaces</groupId>
 	<artifactId>gs-openspaces-jetty-9</artifactId>
-	<version>11.0.0-14800-RELEASE</version>
+	<version>11.0.0-14830-RELEASE</version>
 
 	<properties>
         	<jettyVersion>9.1.2.v20140210</jettyVersion>
