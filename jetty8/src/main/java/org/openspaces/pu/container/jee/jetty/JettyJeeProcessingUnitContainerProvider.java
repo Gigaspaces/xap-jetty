@@ -228,6 +228,11 @@ public class JettyJeeProcessingUnitContainerProvider extends JeeProcessingUnitCo
 
             WebAppContext webAppContext = initWebAppContext(applicationContext);
 
+            if( !portHandles.isEmpty() ) {
+                int port = portHandles.get(0).getPort();
+                webAppContext.getServletContext().setAttribute(JeeProcessingUnitContainerProvider.JETTY_PORT_ACTUAL_CONTEXT, port);
+            }
+
             HandlerContainer container = jettyHolder.getServer();
 
             ContextHandlerCollection contextHandlerContainer = null;
